@@ -516,3 +516,11 @@ msgstr "_Afsluiten"
 #: data/menu.ui.h:41
 msgid "Past_e Special"
 msgstr "Sp_eciaal plakken"
+
+msgid "Sign"
+msgstr "Ondertekenen"
+
+msgid "Choose page to sign"
+msgstr "Kies te ondertekenen pagina"
+msgid "Multiple pages selected. Choose one to sign."
+msgstr "Meerdere pagina's geselecteerd. Kies er één om te ondertekenen."

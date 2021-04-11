@@ -110,6 +110,7 @@ from . import exporter
 from . import metadata
 from . import croputils
 from . import splitter
+from . import signer
 from .iconview import CellRendererImage
 from .iconview import IconviewCursor
 from .iconview import IconviewDragSelect
@@ -331,6 +332,7 @@ class PdfArranger(Gtk.Application):
             ('select-same-format', self.on_action_select, 'i'),
             ('about', self.about_dialog),
             ("insert-blank-page", self.insert_blank_page),
+            ('sign', self.sign_pdf),
         ])
 
         main_menu = self.uiXML.get_object("main_menu_button")
@@ -1604,6 +1606,7 @@ class PdfArranger(Gtk.Application):
             ("select-same-file", ne),
             ("select-same-format", ne),
             ("crop-white-borders", ne),
+            ("sign", ne),
         ]:
             self.window.lookup_action(a).set_enabled(e)
         self.__update_statusbar()
@@ -1984,6 +1987,23 @@ class PdfArranger(Gtk.Application):
         response = error_msg_dlg.run()
         if response == Gtk.ResponseType.OK:
             error_msg_dlg.destroy()
+
+    def sign_pdf(self, _action, _parameter, _unknown):
+        """The plan is to know what page to sign, then get a coordinate to put
+        the signature, then save the document as a file and pyhanko sign
+        that."""
+        selection = self.iconview.get_selected_items()
+        resp = None
+        if len(selection) > 1:
+            d = signer.Page_Dialog(selection, self.window)
+            resp = d.run_get()
+
+        if resp:
+            print("Going to sign page: " + str(resp))
+            # So, here we should show another dialog with an image.
+            # We want the user to click that image in some place, and get the
+            # coords.
+            # With those coords we call pyhanko.
 
 
 def main():
