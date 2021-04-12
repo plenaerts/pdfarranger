@@ -1993,13 +1993,20 @@ class PdfArranger(Gtk.Application):
         the signature, then save the document as a file and pyhanko sign
         that."""
         selection = self.iconview.get_selected_items()
-        resp = None
+        sign_page = None
         if len(selection) > 1:
             d = signer.Page_Dialog(selection, self.window)
-            resp = d.run_get()
+            sign_page = d.run_get()
+        else:
+            sign_page = selection[0]
 
-        if resp:
-            print("Going to sign page: " + str(resp))
+        sign_coords = None
+        d = signer.Signature_Position_Dialog(selection, self.window)
+        sign_coords = d.run_get()
+
+        if sign_page and sign_coords:
+            print("Going to sign page " + str(sign_page) +
+                  ' at ' + str(sign_coords))
             # So, here we should show another dialog with an image.
             # We want the user to click that image in some place, and get the
             # coords.

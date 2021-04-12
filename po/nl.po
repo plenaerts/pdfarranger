@@ -522,5 +522,9 @@ msgstr "Ondertekenen"
 
 msgid "Choose page to sign"
 msgstr "Kies te ondertekenen pagina"
+
 msgid "Multiple pages selected. Choose one to sign."
 msgstr "Meerdere pagina's geselecteerd. Kies er één om te ondertekenen."
+
+msgid "Signature position:"
+msgstr "Positie van de handtekening:"
