@@ -54,5 +54,6 @@ setup(
     install_requires=['pikepdf>=1.7.0','python-dateutil>=2.4.0'],
     extras_require={
         'image': ['img2pdf>=0.3.4'],
+        'signatures': ['pyhanko'],
     },
 )
