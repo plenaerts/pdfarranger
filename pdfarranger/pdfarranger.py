@@ -14,6 +14,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#from pyhanko.sign.beid import open_beid_session, BEIDSigner
 import os
 import shutil  # for file operations like whole directory deletion
 import sys  # for processing of command line args
