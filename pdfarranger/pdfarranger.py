@@ -2011,7 +2011,39 @@ class PdfArranger(Gtk.Application):
             # We want the user to click that image in some place, and get the
             # coords.
             # With those coords we call pyhanko.
+            self.choose_export_pdf_name_and_sign(savemode=GLib.Variant('i', 0))
 
+    def choose_export_pdf_name_and_sign(self, savemode):
+        """Handles choosing a name for exporting and sign the PDF"""
+
+        chooser = Gtk.FileChooserDialog(title=_('Export and sign…'),
+                                        parent=self.window,
+                                        action=Gtk.FileChooserAction.SAVE,
+                                        buttons=(Gtk.STOCK_CANCEL,
+                                                 Gtk.ResponseType.CANCEL,
+                                                 Gtk.STOCK_SAVE,
+                                                 Gtk.ResponseType.ACCEPT))
+        chooser.set_do_overwrite_confirmation(True)
+        if len(self.pdfqueue) > 0:
+            f = self.pdfqueue[0].filename
+            # could be an image thanks to img2pdf
+            if f.endswith(".pdf"):
+                chooser.set_filename(f)
+        chooser.set_current_folder(self.export_directory)
+        filter_list = self.__create_filters(['pdf', 'all'])
+        for f in filter_list[1:]:
+            chooser.add_filter(f)
+
+        response = chooser.run()
+        file_out = chooser.get_filename()
+        chooser.destroy()
+        if response == Gtk.ResponseType.ACCEPT:
+            try:
+                self.save(savemode, file_out)
+                signer.sign_pdf(file_out)
+            except Exception as e:
+                traceback.print_exc()
+                self.error_message_dialog(e)
 
 def main():
     PdfArranger().run(sys.argv)

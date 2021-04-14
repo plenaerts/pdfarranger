@@ -1,5 +1,10 @@
 from gi.repository import Gtk
 import gettext
+# Somthing under here makes us core dump! Don't look at the mess now.
+#from pyhanko.sign import signers
+#from pyhanko.sign.beid import open_beid_session, BEIDSigner
+#from pyhanko.sign.fields import SigFieldSpec
+#from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 
 _ = gettext.gettext
 
@@ -90,3 +95,23 @@ class Signature_Position_Dialog(Gtk.Dialog):
             r = self.position_widget.get_values()
         self.destroy()
         return r
+
+
+def sign_pdf(filename):
+    print('Not siging for now!' + filename)
+    pkcs11_lib = '/usr/lib/x86_64-linux-gnu/pkcs11/beidpkcs11.so'
+    # This import makes us coredump already. I've put it down here so we don't core dump until someone pushes the button.
+    from pyhanko.sign.beid import open_beid_session, BEIDSigner
+    eidsession = open_beid_session(pkcs11_lib)
+    eidsigner = BEIDSigner(eidsession, use_auth_cert=False)
+
+    # This is the code I wanted to start using. Not tested so far so I guess it will not work.
+    # w = IncrementalPdfFileWriter(open(filename, 'wb'))
+    # signers.PdfSigner(
+    # signers.PdfSignatureMetadata(field_name='Signature1'),
+    # signer=eidsigner,
+    # new_field_spec=SigFieldSpec(sig_field_name='Signature1',
+    # on_page=0,
+    # box=(75, 250, 175, 285))
+    # ).sign_pdf(w, in_place=True)
+    # w.write_in_place()
