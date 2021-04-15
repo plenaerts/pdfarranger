@@ -528,3 +528,24 @@ msgstr "Meerdere pagina's geselecteerd. Kies er één om te ondertekenen."
 
 msgid "Signature position:"
 msgstr "Positie van de handtekening:"
+
+msgid "Signing failed!\n"
+msgstr "Ondertekenen mislukt!\n"
+
+msgid "Install instructions:"
+msgstr "Installatieinstructies"
+
+msgid "Install pyHanko in the module search path for pdfarranger."
+msgstr "Installeer pyHanko in het module search path for pdfarranger."
+
+msgid "pyHanko package not found!\n"
+msgstr "pyHanko pakket niet gevonden!\n"
+
+msgid "Document succesfully signed."
+msgstr "Document succesvol ondertekend."
+
+msgid "Further changes will probably invalidate the signature."
+msgstr "Verdere aanpassingen zullen de handtekening waarschijnlijk ongeldig maken."
+
+msgid "Exporting and signing document."
+msgstr "Document aan het exporteren en ondertekenen."

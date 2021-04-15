@@ -30,9 +30,9 @@ class Page_Dialog(Gtk.Dialog):
         result = self.run()
         r = None
         if result == 1:
-            r = min(self.selection)
+            r = min(self.selection).get_indices()[0]
         elif result == 2:
-            r = max(self.selection)
+            r = max(self.selection).get_indices()[0]
         elif result == Gtk.ResponseType.CANCEL:
             r = None
         self.destroy()
@@ -44,6 +44,9 @@ class _Position_Widget(Gtk.HBox):
 
     def __init__(self):
         super().__init__()
+        # So, here we should show another dialog with an image.
+        # We want the user to click that image in some place, and get the
+        # coords.
         label_x1 = Gtk.Label(label="x1:")
         label_x2 = Gtk.Label(label="x2:")
         label_y1 = Gtk.Label(label="y1:")
@@ -92,14 +95,14 @@ class Signature_Position_Dialog(Gtk.Dialog):
         return r
 
 
-def sign_pdf(filename):
-    print('Not siging for now!' + filename)
+def sign_pdf(filename, sign_page, sign_coords):
     pkcs11_lib = '/usr/lib/x86_64-linux-gnu/pkcs11/beidpkcs11.so'
 
     from pyhanko.sign.beid import open_beid_session, BEIDSigner
     from pyhanko.sign import signers
     from pyhanko.sign.fields import SigFieldSpec
     from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+
     eidsession = open_beid_session(pkcs11_lib)
     eidsigner = BEIDSigner(eidsession, use_auth_cert=False)
 
@@ -108,7 +111,6 @@ def sign_pdf(filename):
             signers.PdfSignatureMetadata(field_name='Signature1'),
             signer=eidsigner,
             new_field_spec=SigFieldSpec(sig_field_name='Signature1',
-                                        on_page=0,
-                                        box=(75, 250, 175, 285))
+                                        on_page=sign_page,
+                                        box=sign_coords)
             ).sign_pdf(w, in_place=True)
-    # w.write_in_place()

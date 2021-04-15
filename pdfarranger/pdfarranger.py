@@ -14,7 +14,6 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-#from pyhanko.sign.beid import open_beid_session, BEIDSigner
 import os
 import shutil  # for file operations like whole directory deletion
 import sys  # for processing of command line args
@@ -1989,32 +1988,79 @@ class PdfArranger(Gtk.Application):
         if response == Gtk.ResponseType.OK:
             error_msg_dlg.destroy()
 
-    def sign_pdf(self, _action, _parameter, _unknown):
-        """The plan is to know what page to sign, then get a coordinate to put
-        the signature, then save the document as a file and pyhanko sign
-        that."""
+    def info_message_dialog(self, msg, msg_type=Gtk.MessageType.INFO):
+        error_msg_dlg = Gtk.MessageDialog(flags=Gtk.DialogFlags.MODAL,
+                                          type=msg_type, parent=self.window,
+                                          message_format=str(msg),
+                                          buttons=Gtk.ButtonsType.OK)
+        response = error_msg_dlg.run()
+        if response == Gtk.ResponseType.OK:
+            error_msg_dlg.destroy()
+
+    def __get_sign_page_and_coords(self):
         selection = self.iconview.get_selected_items()
         sign_page = None
         if len(selection) > 1:
+            # Multiple pages selected, ask which one to sign with a dialog.
             d = signer.Page_Dialog(selection, self.window)
             sign_page = d.run_get()
         else:
-            sign_page = selection[0]
+            # Only one page selected. Don't forget to fetch the
+            # int from the Gtk.TreePath object that's in selection[0]
+            sign_page = selection[0].get_indices()[0]
 
         sign_coords = None
         d = signer.Signature_Position_Dialog(selection, self.window)
         sign_coords = d.run_get()
+        return sign_page, sign_coords
 
-        if sign_page and sign_coords:
-            print("Going to sign page " + str(sign_page) +
-                  ' at ' + str(sign_coords))
-            # So, here we should show another dialog with an image.
-            # We want the user to click that image in some place, and get the
-            # coords.
-            # With those coords we call pyhanko.
-            self.choose_export_pdf_name_and_sign(savemode=GLib.Variant('i', 0))
+    def sign_pdf(self, _action, _parameter, _unknown):
+        """Export to a PDF and sign it using pyHanko.
 
-    def choose_export_pdf_name_and_sign(self, savemode):
+        Before all: check if pyHanko is available. If not, show advice.
+
+        If pyHanko is available, then:
+        1. ask which page to sign if more than one page is selected;
+        2. ask for a coordinate to put the signature;
+        3. save the document as a new PDF file and sign it using pyHanko.
+        """
+
+	# Check for pyHanko
+        try:
+            import pyhanko
+        except ImportError:
+            pyhanko = None
+            self.error_message_dialog(_('pyHanko package not found!\n') +
+                                      _('Install instructions:') +
+                                      'https://github.com/MatthiasValvekens/pyHanko/#installing' +
+                                      '\n\n' +
+                                      _('Install pyHanko in the module search path for pdfarranger.')
+                                      )
+
+        ctxt_id = self.status_bar.get_context_id("signing")
+        self.status_bar.push(ctxt_id, _('Exporting and signing document.'))
+
+	# Get page and coords for sig
+        sign_page, sign_coords = self.__get_sign_page_and_coords()
+
+	# Save and sign
+        if sign_page is not None and sign_coords:
+            self.choose_export_pdf_name_and_sign(sign_page,
+                                                 sign_coords,
+                                                 savemode=GLib.Variant('i', 0),
+                                                 )
+
+    def __clear_and_reopen(self, infile):
+        """Clear the IconView and add a file."""
+        self.iconview.get_model().clear()
+        adder = PageAdder(self)
+        adder.addpages(infile)
+        adder.commit(select_added=False, add_to_undomanager=False)
+        self.silent_render()
+        malloc_trim()
+
+    def choose_export_pdf_name_and_sign(self, sign_page,
+                                        sign_coords, savemode,):
         """Handles choosing a name for exporting and sign the PDF"""
 
         chooser = Gtk.FileChooserDialog(title=_('Export and sign…'),
@@ -2041,10 +2087,16 @@ class PdfArranger(Gtk.Application):
         if response == Gtk.ResponseType.ACCEPT:
             try:
                 self.save(savemode, file_out)
-                signer.sign_pdf(file_out)
+                signer.sign_pdf(file_out, sign_page, sign_coords)
+                self.__clear_and_reopen(file_out)
+                self.info_message_dialog(_('Document succesfully signed.') +
+                                         '\n\n' +
+                                         _('Further changes will probably invalidate the signature.'))
+
             except Exception as e:
                 traceback.print_exc()
-                self.error_message_dialog(e)
+                self.error_message_dialog(_('Signing failed!\n') +
+                                          str(e))
 
 def main():
     PdfArranger().run(sys.argv)
