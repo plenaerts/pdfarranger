@@ -39,10 +39,31 @@ class Page_Dialog(Gtk.Dialog):
         return r
 
 
-class _Position_Widget(Gtk.HBox):
-    """A form to specify the position of the signature on a page."""
+class _Coords_Icon_Window(Gtk.ScrolledWindow):
+    def __init__(self, page_selection):
+        super().__init__()
+        self.page_selection = page_selection
+        self.connect('drag_data_received', self.sw_dnd_received_data)
+        self.connect('button_press_event', self.sw_button_press_event)
+        self.connect('scroll_event', self.sw_scroll_event)
+        self.add(Gtk.Label('A label!'))
+        self.show_all()
 
-    def __init__(self):
+    def sw_dnd_received_data(self):
+        print('Drag and drop not implemented yet.')
+
+    def sw_button_press_event(self):
+        print('Button press not implemented yet.')
+
+    def sw_scroll_event(self):
+        print('Scroll event not implemented yet.')
+
+
+class _Coords_Widget(Gtk.HBox):
+    """A form to specify the coords of the position of the
+    signature on a page."""
+
+    def __init__(self, page_icon):
         super().__init__()
         # So, here we should show another dialog with an image.
         # We want the user to click that image in some place, and get the
@@ -64,7 +85,7 @@ class _Position_Widget(Gtk.HBox):
         self.pack_start(label_y2, True, True, 6)
         self.pack_start(self.entry_y2, True, True, 6)
 
-    def get_values(self):
+    def get_coords(self):
         return (self.entry_x1.get_text(), self.entry_x2.get_text(),
                 self.entry_y1.get_text(), self.entry_y2.get_text())
 
@@ -81,8 +102,10 @@ class Signature_Position_Dialog(Gtk.Dialog):
                      Gtk.STOCK_OK, Gtk.ResponseType.OK),
         )
         self.selection = selection
-        self.position_widget = _Position_Widget()
-        self.vbox.pack_start(self.position_widget, True, True, 6)
+        self.coords_icon_window = _Coords_Icon_Window(selection)
+        self.vbox.pack_start(self.coords_icon_window, True, True, 6)
+        self.coords_widget = _Coords_Widget(self.selection)
+        self.vbox.pack_start(self.coords_widget, True, True, 6)
         self.show_all()
         self.set_default_response(Gtk.ResponseType.OK)
 
@@ -90,7 +113,7 @@ class Signature_Position_Dialog(Gtk.Dialog):
         result = self.run()
         r = None
         if result == Gtk.ResponseType.OK:
-            r = self.position_widget.get_values()
+            r = self.coords_widget.get_coords()
         self.destroy()
         return r
 

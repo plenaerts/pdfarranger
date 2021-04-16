@@ -2025,7 +2025,7 @@ class PdfArranger(Gtk.Application):
         3. save the document as a new PDF file and sign it using pyHanko.
         """
 
-	# Check for pyHanko
+        # Check for pyHanko
         try:
             import pyhanko
         except ImportError:
@@ -2040,10 +2040,10 @@ class PdfArranger(Gtk.Application):
         ctxt_id = self.status_bar.get_context_id("signing")
         self.status_bar.push(ctxt_id, _('Exporting and signing document.'))
 
-	# Get page and coords for sig
+        # Get page and coords for sig
         sign_page, sign_coords = self.__get_sign_page_and_coords()
 
-	# Save and sign
+        # Save and sign
         if sign_page is not None and sign_coords:
             self.choose_export_pdf_name_and_sign(sign_page,
                                                  sign_coords,
