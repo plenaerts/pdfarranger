@@ -2024,6 +2024,9 @@ class PdfArranger(Gtk.Application):
         2. ask for a coordinate to put the signature;
         3. save the document as a new PDF file and sign it using pyHanko.
         """
+        print('Testing imports')
+        from pyhanko.pdf_utils.barcodes import PdfStreamQRImage
+        from pyhanko.pdf_utils.images import PdfImage
 
         # Check for pyHanko
         try:
