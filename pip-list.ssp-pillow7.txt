@@ -1,0 +1,234 @@
+Package                         Version         Location                                                          Installer
+------------------------------- --------------- ----------------------------------------------------------------- ---------
+aeidon                          1.8             /usr/lib/python3/dist-packages
+appdirs                         1.4.4           /usr/lib/python3/dist-packages
+apturl                          0.5.2           /usr/lib/python3/dist-packages
+asn1crypto                      1.4.0           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+atomicwrites                    1.4.0           /usr/lib/python3/dist-packages
+attrs                           19.3.0          /usr/lib/python3/dist-packages
+banking.statements.nordea       1.3.0           /usr/lib/python3/dist-packages
+banking.statements.osuuspankki  1.3.4.dev0      /usr/lib/python3/dist-packages
+bcrypt                          3.1.7           /usr/lib/python3/dist-packages
+beautifulsoup4                  4.9.1           /usr/lib/python3/dist-packages
+bleach                          3.2.1           /usr/lib/python3/dist-packages
+blinker                         1.4             /usr/lib/python3/dist-packages
+bottle                          0.12.15         /usr/lib/python3/dist-packages
+Brlapi                          0.7.0           /usr/lib/python3/dist-packages
+cached-property                 1.5.2           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+certifi                         2020.4.5.1      /usr/lib/python3/dist-packages
+cffi                            1.14.5          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+chardet                         3.0.4           /usr/lib/python3/dist-packages
+chrome-gnome-shell              0.0.0           /usr/lib/python3/dist-packages
+click                           7.1.2           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+colorama                        0.4.3           /usr/lib/python3/dist-packages
+coloredlogs                     7.3             /usr/lib/python3/dist-packages
+colorlog                        4.2.1           /usr/lib/python3/dist-packages
+command-not-found               0.3             /usr/lib/python3/dist-packages
+configobj                       5.0.6           /usr/lib/python3/dist-packages
+cryptography                    3.4.7           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+cupshelpers                     1.0             /usr/lib/python3/dist-packages
+cycler                          0.10.0          /usr/lib/python3/dist-packages
+dbus-python                     1.2.16          /usr/lib/python3/dist-packages
+defer                           1.0.6           /usr/lib/python3/dist-packages
+defusedxml                      0.6.0           /usr/lib/python3/dist-packages
+distro                          1.5.0           /usr/lib/python3/dist-packages
+distro-info                     0.23ubuntu1     /usr/lib/python3/dist-packages
+docker                          4.1.0           /usr/lib/python3/dist-packages
+docutils                        0.16            /usr/lib/python3/dist-packages
+duplicity                       0.8.12.0        /usr/lib/python3/dist-packages
+et-xmlfile                      1.0.1           /usr/lib/python3/dist-packages
+evdev                           1.3.0           /usr/lib/python3/dist-packages
+fasteners                       0.14.1          /usr/lib/python3/dist-packages
+flake8                          3.8.3           /usr/lib/python3/dist-packages
+Flask                           1.1.2           /home/pieter/.local/lib/python3.8/site-packages                   pip
+fonttools                       4.22.0          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+future                          0.18.2          /usr/lib/python3/dist-packages
+Glances                         3.1.4.1         /usr/lib/python3/dist-packages
+gpg                             1.14.0-unknown  /usr/lib/python3/dist-packages
+html5lib                        1.1             /usr/lib/python3/dist-packages
+httplib2                        0.18.1          /usr/lib/python3/dist-packages
+humanfriendly                   8.2             /usr/lib/python3/dist-packages
+idna                            2.10            /usr/lib/python3/dist-packages
+img2pdf                         0.3.3           /usr/lib/python3/dist-packages
+importlib-metadata              1.6.0           /usr/lib/python3/dist-packages
+influxdb                        5.2.3           /usr/lib/python3/dist-packages
+isodate                         0.6.0           /usr/lib/python3/dist-packages
+itsdangerous                    1.1.0           /home/pieter/.local/lib/python3.8/site-packages                   pip
+jdcal                           1.0             /usr/lib/python3/dist-packages
+jedi                            0.17.0          /usr/lib/python3/dist-packages
+jeepney                         0.4.3           /usr/lib/python3/dist-packages
+Jinja2                          2.11.2          /home/pieter/.local/lib/python3.8/site-packages                   pip
+keyring                         21.3.0          /usr/lib/python3/dist-packages
+keyrings.alt                    3.4.0           /usr/lib/python3/dist-packages
+kiwisolver                      1.2.0           /usr/lib/python3/dist-packages
+language-selector               0.1             /usr/lib/python3/dist-packages
+launchpadlib                    1.10.13         /usr/lib/python3/dist-packages
+lazr.restfulclient              0.14.2          /usr/lib/python3/dist-packages
+lazr.uri                        1.0.5           /usr/lib/python3/dist-packages
+lockfile                        0.12.2          /usr/lib/python3/dist-packages
+louis                           3.14.0          /usr/lib/python3/dist-packages
+lxml                            4.5.2           /usr/lib/python3/dist-packages
+macaroonbakery                  1.3.1           /usr/lib/python3/dist-packages
+Mako                            1.1.2           /usr/lib/python3/dist-packages
+Markdown                        3.2.2           /usr/lib/python3/dist-packages
+Markups                         3.0.0           /usr/lib/python3/dist-packages
+MarkupSafe                      1.1.1           /usr/lib/python3/dist-packages
+matplotlib                      3.3.0           /usr/lib/python3/dist-packages
+mccabe                          0.6.1           /usr/lib/python3/dist-packages
+meld                            3.20.2          /usr/lib/python3/dist-packages
+meson                           0.55.3          /usr/lib/python3/dist-packages
+monotonic                       1.5             /usr/lib/python3/dist-packages
+more-itertools                  4.2.0           /usr/lib/python3/dist-packages
+mutagen                         1.45.0          /usr/lib/python3/dist-packages
+netifaces                       0.10.4          /usr/lib/python3/dist-packages
+nose                            1.3.7           /usr/lib/python3/dist-packages
+numpy                           1.18.4          /usr/lib/python3/dist-packages
+oauthlib                        3.1.0           /usr/lib/python3/dist-packages
+ocrmypdf                        10.3.1+dfsg     /usr/lib/python3/dist-packages
+odfpy                           1.4.1           /usr/lib/python3/dist-packages
+ofxstatement                    0.6.5           /usr/lib/python3/dist-packages
+ofxstatement-airbankcz          0.0.5           /usr/lib/python3/dist-packages
+ofxstatement-al-bank            0.2.0.post1     /usr/lib/python3/dist-packages
+ofxstatement-austrian           0.0.4           /usr/lib/python3/dist-packages
+ofxstatement-be-argenta         1.0.5           /usr/lib/python3/dist-packages
+ofxstatement-be-ing             0.1.1           /usr/lib/python3/dist-packages
+ofxstatement-be-kbc             0.1.1           /usr/lib/python3/dist-packages
+ofxstatement-be-keytrade        0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-be-triodos         0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-betterment         0.3.1           /usr/lib/python3/dist-packages
+ofxstatement-bubbas             1.0.0           /usr/lib/python3/dist-packages
+ofxstatement-consors            0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-czech              1.2.5           /usr/lib/python3/dist-packages
+ofxstatement-dab                0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-de-ing             0.1.0           /usr/lib/python3/dist-packages
+ofxstatement-de-triodos         0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-fineco             0.0.2           /usr/lib/python3/dist-packages
+ofxstatement-germany-1822direkt 0.0.2           /usr/lib/python3/dist-packages
+ofxstatement-germany-postbank   0.0.2           /usr/lib/python3/dist-packages
+ofxstatement-intesasp           0.1.3           /usr/lib/python3/dist-packages
+ofxstatement-is-arionbanki      0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-iso20022           0.4.0           /usr/lib/python3/dist-packages
+ofxstatement-lansforsakringar   0.2.0           /usr/lib/python3/dist-packages
+ofxstatement-latvian            1.3.2           /usr/lib/python3/dist-packages
+ofxstatement-lfs                0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-lithuanian         1.0.3           /usr/lib/python3/dist-packages
+ofxstatement-mbank.sk           0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-otp                0.0.3           /usr/lib/python3/dist-packages
+ofxstatement-polish             0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-postfinance        0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-raiffeisencz       0.0.4           /usr/lib/python3/dist-packages
+ofxstatement-russian            0.0.1           /usr/lib/python3/dist-packages
+ofxstatement-seb                1.0.0           /usr/lib/python3/dist-packages
+ofxstatement-simple             0.1.0           /usr/lib/python3/dist-packages
+ofxstatement-unicreditcz        0.0.4           /usr/lib/python3/dist-packages
+olefile                         0.46            /usr/lib/python3/dist-packages
+openpyxl                        3.0.3           /usr/lib/python3/dist-packages
+openshot-qt                     2.5.1           /usr/lib/python3/dist-packages
+oscrypto                        1.2.1           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+packaging                       20.4            /usr/lib/python3/dist-packages
+paramiko                        2.7.1           /usr/lib/python3/dist-packages
+parso                           0.7.0           /usr/lib/python3/dist-packages
+pdfarranger                     1.7.1           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+pdfminer.six                    20200726        /usr/lib/python3/dist-packages
+pexpect                         4.6.0           /usr/lib/python3/dist-packages
+pikepdf                         1.17.3+dfsg     /usr/lib/python3/dist-packages
+Pillow                          7.2.0           /usr/lib/python3/dist-packages
+pip                             20.1.1          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+Pivy                            0.6.5           /usr/lib/python3/dist-packages
+pkg-resources                   0.0.0           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+pkginfo                         1.4.2           /usr/lib/python3/dist-packages
+pluggy                          0.13.0          /usr/lib/python3/dist-packages
+ply                             3.11            /usr/lib/python3/dist-packages
+protobuf                        3.12.3          /usr/lib/python3/dist-packages
+psutil                          5.7.2           /usr/lib/python3/dist-packages
+py                              1.9.0           /usr/lib/python3/dist-packages
+pyasn1                          0.4.8           /usr/lib/python3/dist-packages
+pycairo                         1.16.2          /usr/lib/python3/dist-packages
+pycodestyle                     2.6.0           /usr/lib/python3/dist-packages
+pycparser                       2.20            /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+pycrypto                        2.6.1           /usr/lib/python3/dist-packages
+pycryptodomex                   3.9.7           /usr/lib/python3/dist-packages
+pycups                          2.0.1           /usr/lib/python3/dist-packages
+pyenchant                       3.0.1           /usr/lib/python3/dist-packages
+pyflakes                        2.2.0           /usr/lib/python3/dist-packages
+pygame                          1.9.6           /usr/lib/python3/dist-packages
+Pygments                        2.3.1           /usr/lib/python3/dist-packages
+PyGObject                       3.38.0          /usr/lib/python3/dist-packages
+pyHanko                         0.6.0.dev1      /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+pyhanko-certvalidator           0.14.1          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+PyJWT                           1.7.1           /usr/lib/python3/dist-packages
+pyliblo                         0.10.0          /usr/lib/python3/dist-packages
+pymacaroons                     0.13.0          /usr/lib/python3/dist-packages
+PyNaCl                          1.4.0           /usr/lib/python3/dist-packages
+pyOpenSSL                       19.1.0          /usr/lib/python3/dist-packages
+pyparsing                       2.4.7           /usr/lib/python3/dist-packages
+PyQt5                           5.15.0          /usr/lib/python3/dist-packages                                    pip
+pyRFC3339                       1.1             /usr/lib/python3/dist-packages
+pysmi                           0.3.2           /usr/lib/python3/dist-packages
+pysnmp                          4.4.6           /usr/lib/python3/dist-packages
+PySocks                         1.6.8           /usr/lib/python3/dist-packages
+pystache                        0.5.4           /usr/lib/python3/dist-packages
+pytest                          4.6.11          /usr/lib/python3/dist-packages
+python-apt                      2.1.3+ubuntu1.3 /usr/lib/python3/dist-packages
+python-barcode                  0.13.1          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+python-dateutil                 2.8.1           /usr/lib/python3/dist-packages
+python-debian                   0.1.37          /usr/lib/python3/dist-packages
+python-distutils-extra          2.39            /usr/lib/python3/dist-packages
+python-libdiscid                1.1             /usr/lib/python3/dist-packages
+python-markdown-math            0.7             /usr/lib/python3/dist-packages
+python-pkcs11                   0.7.0           /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+python-sane                     2.8.3           /usr/lib/python3/dist-packages
+pytz                            2020.1          /usr/lib/python3/dist-packages
+pyxattr                         0.6.1           /usr/lib/python3/dist-packages
+pyxdg                           0.26            /usr/lib/python3/dist-packages
+PyYAML                          5.3.1           /usr/lib/python3/dist-packages
+pyzmq                           19.0.2          /usr/lib/python3/dist-packages
+qrcode                          6.1             /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+random2                         1.0.1           /usr/lib/python3/dist-packages
+rdflib                          4.2.2           /usr/lib/python3/dist-packages
+readme-renderer                 24.0            /usr/lib/python3/dist-packages
+regex                           2019.8.19       /usr/lib/python3/dist-packages
+reportlab                       3.5.47          /usr/lib/python3/dist-packages
+requests                        2.25.1          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+requests-toolbelt               0.8.0           /usr/lib/python3/dist-packages
+requests-unixsocket             0.2.0           /usr/lib/python3/dist-packages
+rfc3986                         1.4.0           /usr/lib/python3/dist-packages
+roman                           2.0.0           /usr/lib/python3/dist-packages
+rope                            0.18.0          /home/pieter/.local/lib/python3.8/site-packages                   pip
+ropemode                        0.5             /home/pieter/.local/lib/python3.8/site-packages                   pip
+ropevim                         0.8.1           /home/pieter/.local/lib/python3.8/site-packages                   pip
+scour                           0.37            /usr/lib/python3/dist-packages
+SecretStorage                   3.1.2           /usr/lib/python3/dist-packages
+setproctitle                    1.1.10          /usr/lib/python3/dist-packages
+setuptools                      44.0.0          /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+Shredder                        2.9.0.Odd.Olm   /usr/lib/python3/dist-packages
+simplejson                      3.17.0          /usr/lib/python3/dist-packages
+sip                             4.19.24         /usr/lib/python3/dist-packages                                    pip
+six                             1.15.0          /usr/lib/python3/dist-packages
+smdv                            0.1.1           /home/pieter/.local/lib/python3.8/site-packages                   pip
+sortedcontainers                2.1.0           /usr/lib/python3/dist-packages
+soupsieve                       2.0.1           /usr/lib/python3/dist-packages
+SPARQLWrapper                   1.8.5           /usr/lib/python3/dist-packages
+systemd-python                  234             /usr/lib/python3/dist-packages
+textile                         4.0.1           /usr/lib/python3/dist-packages
+torbrowser-launcher             0.3.2           /usr/lib/python3/dist-packages
+tqdm                            4.48.2          /usr/lib/python3/dist-packages
+twine                           3.2.0           /usr/lib/python3/dist-packages
+tzlocal                         2.1             /home/pieter/src/pdfarranger/venv-ssp/lib/python3.8/site-packages pip
+ubuntu-advantage-tools          24.4            /usr/lib/python3/dist-packages
+ubuntu-drivers-common           0.0.0           /usr/lib/python3/dist-packages
+ufw                             0.36            /usr/lib/python3/dist-packages
+unattended-upgrades             0.1             /usr/lib/python3/dist-packages
+urllib3                         1.25.9          /usr/lib/python3/dist-packages
+usb-creator                     0.3.7           /usr/lib/python3/dist-packages
+wadllib                         1.3.4           /usr/lib/python3/dist-packages
+wcwidth                         0.1.9           /usr/lib/python3/dist-packages
+webencodings                    0.5.1           /usr/lib/python3/dist-packages
+websocket-client                0.53.0          /usr/lib/python3/dist-packages
+websockets                      8.1             /home/pieter/.local/lib/python3.8/site-packages                   pip
+Werkzeug                        1.0.1           /home/pieter/.local/lib/python3.8/site-packages                   pip
+wheel                           0.34.2          /usr/lib/python3/dist-packages
+xkit                            0.0.0           /usr/lib/python3/dist-packages
+xlrd                            1.1.0           /usr/lib/python3/dist-packages
+youtube-dl                      2020.9.14       /usr/lib/python3/dist-packages
+zipp                            1.0.0           /usr/lib/python3/dist-packages
