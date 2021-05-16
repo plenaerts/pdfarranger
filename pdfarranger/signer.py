@@ -73,9 +73,9 @@ class _Coords_Widget(Gtk.HBox):
         label_y1 = Gtk.Label(label="y1:")
         label_y2 = Gtk.Label(label="y2:")
         self.entry_x1 = Gtk.Entry(text="75", width_chars=3)
-        self.entry_x2 = Gtk.Entry(text="175", width_chars=3)
-        self.entry_y1 = Gtk.Entry(text="250", width_chars=3)
-        self.entry_y2 = Gtk.Entry(text="285", width_chars=3)
+        self.entry_x2 = Gtk.Entry(text="225", width_chars=3)
+        self.entry_y1 = Gtk.Entry(text="100", width_chars=3)
+        self.entry_y2 = Gtk.Entry(text="25", width_chars=3)
         self.pack_start(label_x1, True, True, 6)
         self.pack_start(self.entry_x1, True, True, 6)
         self.pack_start(label_x2, True, True, 6)
@@ -86,8 +86,8 @@ class _Coords_Widget(Gtk.HBox):
         self.pack_start(self.entry_y2, True, True, 6)
 
     def get_coords(self):
-        return (self.entry_x1.get_text(), self.entry_x2.get_text(),
-                self.entry_y1.get_text(), self.entry_y2.get_text())
+        return (self.entry_x1.get_text(), self.entry_y1.get_text(),
+                self.entry_x2.get_text(), self.entry_y2.get_text())
 
 
 class Signature_Position_Dialog(Gtk.Dialog):
@@ -130,6 +130,7 @@ def sign_pdf(filename, sign_page, sign_coords):
     eidsigner = BEIDSigner(eidsession, use_auth_cert=False)
 
     w = IncrementalPdfFileWriter(open(filename, 'rb+'))
+    print('Signing with coords: ' + str(sign_coords))
     signers.PdfSigner(
             signers.PdfSignatureMetadata(field_name='Signature1'),
             signer=eidsigner,
