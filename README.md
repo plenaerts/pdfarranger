@@ -6,3 +6,4 @@ I chose to do this in pdfarranger because it was the PDF tool of which I underst
 We'll be doing the signature stuff using https://github.com/MatthiasValvekens/pyHanko/. I've been using pyhanko a couple of times from command line. It works very well, but it's a drag to hit and miss the coordinates for the stamp. Hence my attempt at something.
 
 Consider all of the code in my fork as WIP. Not working. Not even alfa. My ambition probably does not reach all the features one would think of for digital signatures on PDF's, but don't hesitate to look at it and advise me on how to do better.
+
