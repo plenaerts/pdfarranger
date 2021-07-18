@@ -73,10 +73,12 @@ APPNAME = 'PDF Arranger'
 VERSION = '1.7.1'
 WEBSITE = 'https://github.com/pdfarranger/pdfarranger'
 
-# Add support for dnd to other instance and insert file at drop location in Windows
 if os.name == 'nt':
+    # Add support for dnd to other instance and insert file at drop location in Windows
     import keyboard  # to get control key state when drag to other instance
     os.environ['GDK_WIN32_USE_EXPERIMENTAL_OLE2_DND'] = 'true'
+    # Use client side decorations. Will also enable window moving with Win + left/right
+    os.environ['GTK_CSD'] = '1'
 
 import gi
 
@@ -213,7 +215,8 @@ class PdfArranger(Gtk.Application):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, application_id="com.github.jeromerobert.pdfarranger",
-                         flags=Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.NON_UNIQUE,
+                         flags=Gio.ApplicationFlags.NON_UNIQUE |
+                            Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
                          **kwargs)
 
         # Create the temporary directory
@@ -266,15 +269,32 @@ class PdfArranger(Gtk.Application):
             # "private" clipboard does not work in Windows so we can't use it here
             self.clipboard_pdfarranger = Gtk.Clipboard.get(Gdk.Atom.intern('_SELECTION_PDFARRANGER',
                                                                            False))
+        self.add_arguments()
 
-    def do_open(self, files, _n, _hints):
-        """ https://lazka.github.io/pgi-docs/Gio-2.0/classes/Application.html#Gio.Application.do_open """
-        self.activate()
-        # Importing documents passed as command line arguments
-        a = PageAdder(self)
-        for f in files:
-            a.addpages(f.get_path())
-        a.commit(select_added=False, add_to_undomanager=True)
+    def add_arguments(self):
+        self.set_option_context_summary(_(
+           "PDF Arranger is a small python-gtk application, which helps the "
+           "user to merge or split pdf documents and rotate, crop and rearrange "
+           "their pages using an interactive and intuitive graphical interface. "
+           "It is a frontend for pikepdf."
+        ))
+
+        self.add_main_option(
+            "version",
+            ord("v"),
+            GLib.OptionFlags.NONE,
+            GLib.OptionArg.NONE,
+            _("Print the version of PDF Arranger and exit"),
+            None,
+        )
+        self.add_main_option(
+            GLib.OPTION_REMAINING,
+            0,
+            GLib.OptionFlags.NONE,
+            GLib.OptionArg.STRING_ARRAY,
+            _("File(s) to open"),
+            "[FILES]",
+        )
 
     def __build_from_file(self, path):
         """ Return the path of a resource file """
@@ -535,6 +555,34 @@ class PdfArranger(Gtk.Application):
         self.iv_cursor = IconviewCursor(self)
         self.iv_drag_select = IconviewDragSelect(self)
 
+    def do_command_line(self, command_line):
+        options = command_line.get_options_dict()
+
+        # Print PDF Arranger version and exit
+        if options.contains("version"):
+            print(APPNAME + "-" + VERSION)
+            print("pikepdf-" + pikepdf.__version__)
+            print("libqpdf-" + pikepdf.__libqpdf_version__)
+            return 0
+
+        self.activate()
+
+        if options.lookup_value(GLib.OPTION_REMAINING):
+            files = [Gio.File.new_for_commandline_arg(i)
+                    for i in options.lookup_value(GLib.OPTION_REMAINING)]
+
+            a = PageAdder(self)
+            for f in files:
+                try:
+                    a.addpages(f.get_path())
+                except FileNotFoundError as e:
+                    print(e, file=sys.stderr)
+                    self.error_message_dialog(e)
+
+            a.commit(select_added=False, add_to_undomanager=True)
+
+        return 0
+
     @staticmethod
     def set_cellrenderer_data(_column, cell, model, it, _data=None):
         cell.set_page(model.get_value(it, 0))
@@ -608,9 +656,9 @@ class PdfArranger(Gtk.Application):
             return
         self.set_iconview_visible(timeout=False)
 
-    def window_state_event(self, _window, event):
+    def window_state_event(self, _window, _event):
         """Window state change."""
-        self.set_iconview_visible(timeout=False)
+        GObject.timeout_add(100, self.set_iconview_visible)
 
     def set_iconview_visible(self, timeout=True):
         if timeout:
@@ -780,7 +828,11 @@ class PdfArranger(Gtk.Application):
             response = d.run()
             d.destroy()
 
-            if response == 2:
+            if response == 1:
+                # Quit
+                self.close_application()
+            elif response == 2 or response == Gtk.ResponseType.DELETE_EVENT:
+                # DELETE_EVENT is returned if Esc is pressed
                 # Returning True to stop self.window delete_event propagation.
                 return True
             elif response == 3:
@@ -789,8 +841,12 @@ class PdfArranger(Gtk.Application):
                 # Quit only if it has been really saved.
                 if self.is_unsaved:
                     return True
-
-        self.close_application()
+                self.close_application()
+            else:
+                # If unknown return code, do nothing
+                return True
+        else:
+            self.close_application()
 
     def close_application(self, _widget=None, _event=None, _data=None):
         """Termination"""
@@ -1577,13 +1633,15 @@ class PdfArranger(Gtk.Application):
 
         # Display right click menu
         if event.button == 3:
-            selection = iconview.get_selected_items()
             if self.click_path:
+                selection = iconview.get_selected_items()
                 if self.click_path not in selection:
                     iconview.unselect_all()
-                iconview.select_path(self.click_path)
-                iconview.grab_focus()
-                self.popup.popup(None, None, None, None, event.button, event.time)
+                    iconview.select_path(self.click_path)
+            else:
+                iconview.unselect_all()
+            iconview.grab_focus()
+            self.popup.popup(None, None, None, None, event.button, event.time)
             return 1
 
     def iv_key_press_event(self, iconview, event):
@@ -1948,18 +2006,14 @@ class PdfArranger(Gtk.Application):
         first = indices[0]
         last = indices[-1]
         contiguous = (len(indices) == last - first + 1)
-        if not contiguous:
-            return False
 
-        return True
+        return contiguous
 
     def reverse_order(self, _action, _parameter, _unknown):
         """Reverses the selected elements in the IconView"""
 
         model = self.iconview.get_model()
         selection = self.iconview.get_selected_items()
-        if not self.reverse_order_available(selection):
-            return
 
         # selection is a list of 1-tuples, not in order
         indices = sorted([i[0] for i in selection])

@@ -25,6 +25,7 @@ __all__ = [
 
 import sys
 import os
+import errno
 import mimetypes
 import copy
 import pathlib
@@ -147,25 +148,26 @@ class Page:
         if rotation == 90 or rotation == 270:
             self.size.reverse()
 
-    def split(self, leftcrops, topcrops):
+    def split(self, vcrops, hcrops):
         """Split this page into a grid and return all but the top-left page."""
         newpages = []
         left, right, top, bottom = self.crop
         # If the page is cropped, adjust the new crop for the visible part of the page.
         hscale = 1 - (left + right)
         vscale = 1 - (top + bottom)
-        leftcrops = [l * hscale for l in leftcrops]
-        topcrops = [t * vscale for t in topcrops]
-        for i in reversed(range(len(topcrops)-1)):
-            topcrop = top + topcrops[i]
-            row_height = topcrops[i+1] - topcrops[i]
+        vcrops = [(l * hscale, r * hscale) for (l, r) in vcrops]
+        hcrops = [ (t * vscale, b * vscale) for (t, b) in hcrops]
+
+        for (t, b) in reversed(hcrops):
+            topcrop = top + t
+            row_height = b - t
             bottomcrop = 1 - (topcrop + row_height)
-            for j in reversed(range(len(leftcrops)-1)):
-                leftcrop = left + leftcrops[j]
-                col_width = leftcrops[j+1] - leftcrops[j]
+            for (l, r) in reversed(vcrops):
+                leftcrop = left + l
+                col_width = r - l
                 rightcrop = 1 - (leftcrop + col_width)
                 crop = [leftcrop, rightcrop, topcrop, bottomcrop]
-                if i == 0 and j == 0:
+                if l == 0.0 and t == 0.0:
                     # Update the original page
                     self.crop = crop
                 else:
@@ -250,7 +252,10 @@ class PDFDoc:
     def __init__(self, filename, basename, tmp_dir, parent):
         self.render_lock = threading.Lock()
         self.filename = os.path.abspath(filename)
-        self.mtime = os.path.getmtime(filename)
+        try:
+            self.mtime = os.path.getmtime(filename)
+        except OSError as e:
+            raise PDFDocError(e)
         if basename is None:  # When importing files
             self.basename = os.path.basename(filename)
         else:  # When copy-pasting
@@ -323,6 +328,11 @@ class PageAdder:
         crop = [0] * 4 if crop is None else crop
         pdfdoc = None
         nfile = None
+        # Check if file exists
+        if not os.path.isfile(filename):
+            raise FileNotFoundError(
+                errno.ENOENT, os.strerror(errno.ENOENT), filename)
+
         # Check if added page or file already exist in pdfqueue
         for i, it_pdfdoc in enumerate(self.app.pdfqueue):
             if basename is not None and filename == it_pdfdoc.copyname:
