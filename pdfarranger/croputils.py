@@ -270,7 +270,12 @@ def white_borders(model, selection, pdfqueue):
         page = pdfdoc.document.get_page(p.npage - 1)
         # Always render pages at 72 dpi whatever the zoom or scale of the page
         w, h = page.get_size()
-        # FIXME: No longer ignore p.crop so we could do nested white border crop
+        orig_crop = p.rotate_crop(p.crop, p.rotate_times(360 - p.angle))
+
+        first_col = int(w * orig_crop[0])
+        last_col = min(int(w), int(w * (1 - orig_crop[1]) + 1))
+        first_row = int(h * orig_crop[2])
+        last_row = min(int(h), int(h * (1 - orig_crop[3]) + 1))
         w = int(w)
         h = int(h)
         thumbnail = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
@@ -286,8 +291,8 @@ def white_borders(model, selection, pdfqueue):
         # TODO: Those 4 copy/paste should be factorized
         # Left
         allwhite = True
-        for col in range(w - 1):
-            for row in range(h - 1):
+        for col in range(first_col, last_col):
+            for row in range(first_row, last_row):
                 if data[row][col] != 0:
                     allwhite = False
                     crop_this_page[0] = (col) / w
@@ -297,8 +302,8 @@ def white_borders(model, selection, pdfqueue):
 
         # Right
         allwhite = True
-        for col in range(w - 1, 0, -1):
-            for row in range(h - 1):
+        for col in range(last_col - 1, first_col - 1, -1):
+            for row in range(first_row, last_row):
                 if data[row][col] != 0:
                     allwhite = False
                     crop_this_page[1] = (w - col) / w
@@ -308,8 +313,8 @@ def white_borders(model, selection, pdfqueue):
 
         # Top
         allwhite = True
-        for row in range(h - 1):
-            for col in range(w - 1):
+        for row in range(first_row, last_row):
+            for col in range(first_col, last_col):
                 if data[row][col] != 0:
                     allwhite = False
                     crop_this_page[2] = (row) / h
@@ -319,8 +324,8 @@ def white_borders(model, selection, pdfqueue):
 
         # Bottom
         allwhite = True
-        for row in range(h - 1, 0, -1):
-            for col in range(w - 1):
+        for row in range(last_row - 1, first_row - 1, -1):
+            for col in range(first_col, last_col):
                 if data[row][col] != 0:
                     allwhite = False
                     crop_this_page[3] = (h - row) / h
@@ -345,6 +350,8 @@ class BlankPageDialog(Gtk.Dialog):
                 Gtk.ResponseType.OK,
             ),
         )
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.set_resizable(False)
         self.width_widget = _ScalingWidget(_("Width"), size[0])
         self.height_widget = _ScalingWidget(_("Height"), size[1])
         self.vbox.pack_start(self.width_widget, True, True, 6)
@@ -352,8 +359,6 @@ class BlankPageDialog(Gtk.Dialog):
         self.width_widget.props.spacing = 6
         self.height_widget.props.spacing = 6
         self.show_all()
-        self.set_resizable(False)
-        self.set_default_response(Gtk.ResponseType.OK)
 
     def run_get(self):
         result = self.run()

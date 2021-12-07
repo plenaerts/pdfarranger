@@ -152,8 +152,11 @@ class PdfArrangerTest(unittest.TestCase):
 
     def _assert_selected(self, selection):
         app = self._app()
-        statusbar = app.child(roleName="status bar")
-        self.assertEqual(statusbar.name, "Selected pages: " + selection)
+        from dogtail import predicate
+        allstatusbar = app.findChildren(predicate.GenericPredicate(roleName="status bar"), showingOnly=False)
+        # If we have multiple status bar, concider the last one as the one who display the selection
+        statusbar = allstatusbar[-1]
+        self.assertTrue(statusbar.name.startswith("Selected pages: " + selection))
 
     def _icons(self):
         """Return the list of page icons"""
@@ -234,7 +237,13 @@ class TestBatch1(PdfArrangerTest):
         rawinput.keyCombo("enter")
         rawinput.typeText('Memories')
         rawinput.keyCombo("enter")
-        dialog.child(name="OK").click()
+	# FIXME: depending on where the test is ran the previous enter close
+	# the dialog or do not close it.
+        try:
+            dialog.child(name="OK").click()
+        except Exception:
+            print("'Edit Properties dialog' closed by 'enter'.")
+        self._wait_cond(lambda: dialog.dead)
 
     def test_03_zoom(self):
         app = self._app()

@@ -132,18 +132,22 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
           <attribute name="target" type="i">1</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">Paste Interleave _Odd</attribute>
+          <attribute name="label" translatable="yes">Paste As _Odd Pages</attribute>
           <attribute name="action">win.paste</attribute>
           <attribute name="target" type="i">2</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">Paste Interleave _Even</attribute>
+          <attribute name="label" translatable="yes">Paste As _Even Pages</attribute>
           <attribute name="action">win.paste</attribute>
           <attribute name="target" type="i">3</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">Insert Blan_k Page</attribute>
           <attribute name="action">win.insert-blank-page</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Generate Booklet</attribute>
+          <attribute name="action">win.generate-booklet</attribute>
         </item>
       </section>
     </submenu>
@@ -246,12 +250,12 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
             <attribute name="target" type="i">1</attribute>
           </item>
           <item>
-            <attribute name="label" translatable="yes">Paste Interleave _Odd</attribute>
+            <attribute name="label" translatable="yes">Paste As _Odd Pages</attribute>
             <attribute name="action">win.paste</attribute>
             <attribute name="target" type="i">2</attribute>
           </item>
           <item>
-            <attribute name="label" translatable="yes">Paste Interleave _Even</attribute>
+            <attribute name="label" translatable="yes">Paste As _Even Pages</attribute>
             <attribute name="action">win.paste</attribute>
             <attribute name="target" type="i">3</attribute>
           </item>
@@ -338,6 +342,10 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
       <item>
         <attribute name="label" translatable="yes">Insert Blan_k Page</attribute>
         <attribute name="action">win.insert-blank-page</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Generate Booklet</attribute>
+        <attribute name="action">win.generate-booklet</attribute>
       </item>
     </section>
     <section>

@@ -1,65 +1,64 @@
-# Turkish translation of pdfarranger
+# SOME DESCRIPTIVE TITLE.
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the pdfarranger package.
-# Murathan BOSTANCI <murathan.bostanci@profelis.com.tr>, 2018
-# Emin Tufan Çetin <etcetin@gmail.com>, 2020, 2021
-# Oğuz Ersen <oguzersen@protonmail.com>, 2021
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pdfarranger master\n"
+"Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-11-20 21:36+0300\n"
-"PO-Revision-Date: 2021-01-02 14:54+0300\n"
-"Last-Translator: Emin Tufan Çetin <etcetin@gmail.com>\n"
-"Language-Team: Turkish <gnome-turk@gnome.org>\n"
-"Language: tr\n"
+"POT-Creation-Date: 2021-10-31 13:42+0100\n"
+"PO-Revision-Date: 2021-11-26 15:38+0900\n"
+"Language-Team: \n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.0\n"
+"Last-Translator: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Poedit 2.4.2\n"
+"Language: ko\n"
 
 #: pdfarranger/core.py:85
 msgid "page"
-msgstr "sayfa"
+msgstr "페이지"
 
 #: pdfarranger/core.py:193
 msgid "Password required"
-msgstr "Parola gerekli"
+msgstr "비밀번호 필요"
 
 #: pdfarranger/core.py:204
 msgid "The password will be remembered until you close PDF Arranger."
-msgstr "Parola, siz PDF Arrangerʼi kapatana dek anımsanacak."
+msgstr "PDF 편집기를 닫기 전까지 비밀번호를 기억합니다."
 
 #: pdfarranger/core.py:205
+#, python-format
 msgid ""
 "The document “{}” is locked and requires a password before it can be opened."
-msgstr "“{}” belgesi kilitli ve açılmadan önce parola gerekiyor."
+msgstr "보호된 문서인 \"{}\"(을)를 열기 전에 비밀번호를 입력해야 합니다."
 
 #: pdfarranger/core.py:215
 msgid "Password"
-msgstr "Parola"
+msgstr "비밀번호"
 
-#: pdfarranger/core.py:266 pdfarranger/pdfarranger.py:1267
+#: pdfarranger/core.py:266 pdfarranger/pdfarranger.py:1234
 msgid "Unknown file format"
-msgstr "Bilinmeyen dosya biçimi"
+msgstr "알 수 없는 형식"
 
 #: pdfarranger/core.py:282
 msgid "Image files are only supported with img2pdf"
-msgstr "Yalnızca img2pdf ile desteklenen resim dosyaları"
+msgstr "이미지 파일은 img2pdf만 지원합니다"
 
 #: pdfarranger/core.py:304
 msgid "Image format is not supported by img2pdf"
-msgstr "Resim dosyası, img2pdf tarafından desteklenmiyor"
+msgstr "해당 이미지 형식은 img2pdf에서 지원하지 않습니다"
 
-#: pdfarranger/core.py:306 pdfarranger/pdfarranger.py:1277
+#: pdfarranger/core.py:306 pdfarranger/pdfarranger.py:1244
 msgid "File is neither pdf nor image"
-msgstr "Dosya ne pdf ne de resimdir"
+msgstr "PDF 및 그림 파일이 아닙니다"
 
 #: pdfarranger/croputils.py:114
 msgid "Scale factor"
-msgstr "Ölçek çarpanı"
+msgstr "확대 상수"
 
 #: pdfarranger/croputils.py:120
 msgid "%"
@@ -71,125 +70,122 @@ msgstr "mm"
 
 #: pdfarranger/croputils.py:146
 msgid "Left"
-msgstr "Sol"
+msgstr "왼쪽"
 
 #: pdfarranger/croputils.py:146
 msgid "Right"
-msgstr "Sağ"
+msgstr "오른쪽"
 
 #: pdfarranger/croputils.py:146
 msgid "Top"
-msgstr "Üst"
+msgstr "위"
 
 #: pdfarranger/croputils.py:146
 msgid "Bottom"
-msgstr "Alt"
+msgstr "아래"
 
 #: pdfarranger/croputils.py:150
 msgid "Crop Margins"
-msgstr "Kenarları Kırp"
+msgstr "차이 잘라내기"
 
 #: pdfarranger/croputils.py:158
 msgid ""
 "Cropping does not remove any content from the PDF file, it only hides it."
-msgstr ""
-"Kırparak PDF dosyasından herhangi bir veri kaldırılmaz, yalnızca gizlenir."
+msgstr "잘라내기는 PDF 파일의 내용을 삭제하지 않으며, 해당 영역만 숨깁니다."
 
 #: pdfarranger/croputils.py:167
-#, python-format
 msgid "% of width"
-msgstr "% olarak genişlik"
+msgstr "너비 %"
 
 #: pdfarranger/croputils.py:167
-#, python-format
 msgid "% of height"
-msgstr "% olarak yükselik"
+msgstr "높이 %"
 
 #: pdfarranger/croputils.py:214
 msgid "Page format"
-msgstr "Sayfa biçimi"
+msgstr "용지 크기"
 
 #: pdfarranger/croputils.py:229 pdfarranger/croputils.py:233
 #: pdfarranger/croputils.py:353
 msgid "Width"
-msgstr "Genişlik"
+msgstr "너비"
 
 #: pdfarranger/croputils.py:230 pdfarranger/croputils.py:234
 #: pdfarranger/croputils.py:354
 msgid "Height"
-msgstr "Yükseklik"
+msgstr "높이"
 
 #: pdfarranger/croputils.py:232
 msgid "Relative"
-msgstr "Göreceli"
+msgstr ""
 
 #: pdfarranger/croputils.py:235
 msgid "Page Size"
-msgstr "Sayfa Boyutu"
+msgstr "용지 크기"
 
 #: pdfarranger/croputils.py:343
 msgid "Insert Blank Page"
-msgstr "Boş Sayfa Ekle"
+msgstr "빈 페이지 삽입"
 
 #: pdfarranger/exporter.py:119
 msgid "Warning"
-msgstr "Uyarı"
+msgstr "경고"
 
 #: pdfarranger/exporter.py:124
 msgid "Forms and outlines are lost on saving."
-msgstr "Kaydedilirken formlar ve konturlar yitirilecek."
+msgstr "폼과 윤곽선은 저장 시 사라집니다."
 
 #: pdfarranger/exporter.py:126
 msgid "Do not show this dialog again."
-msgstr "Bu pencereyi yeniden gösterme."
+msgstr "이 대화상자를 다시 표시하지 않습니다."
 
 #: pdfarranger/metadata.py:40
 msgid "Title"
-msgstr "Başlık"
+msgstr "제목"
 
 #: pdfarranger/metadata.py:41
 msgid "Subject"
-msgstr "Konu"
+msgstr "주제"
 
 #: pdfarranger/metadata.py:42
 msgid "Keywords"
-msgstr "Anahtar sözcükler"
+msgstr "검색어"
 
 #: pdfarranger/metadata.py:43
 msgid "Producer"
-msgstr "Üretici"
+msgstr "글쓴이"
 
 #: pdfarranger/metadata.py:44
 msgid "Creator"
-msgstr "Oluşturucu"
+msgstr "만든이"
 
 #: pdfarranger/metadata.py:45
 msgid "Creator tool"
-msgstr "Oluşturucu araç"
+msgstr "만든 도구"
 
 #: pdfarranger/metadata.py:46
 msgid "Created"
-msgstr "Oluşturulma"
+msgstr "만든 날짜"
 
 #: pdfarranger/metadata.py:47
 msgid "Modified"
-msgstr "Değiştirilme"
+msgstr "수정 날짜"
 
 #: pdfarranger/metadata.py:151
 msgid "Invalid date format. Input discarded."
-msgstr "Geçersiz tarih biçimi. Girdi görmezden gelindi."
+msgstr "잘못된 날짜 형식입니다."
 
 #: pdfarranger/metadata.py:180
 msgid "Edit properties"
-msgstr "Özellikleri düzenle"
+msgstr "정보 편집"
 
 #: pdfarranger/metadata.py:194
 msgid "Property"
-msgstr "Özellik"
+msgstr "우선도"
 
 #: pdfarranger/metadata.py:194
 msgid "Value"
-msgstr "Değer"
+msgstr "값"
 
 #: pdfarranger/pdfarranger.py:271
 msgid ""
@@ -198,353 +194,352 @@ msgid ""
 "using an interactive and intuitive graphical interface. It is a frontend for "
 "pikepdf."
 msgstr ""
-"PDF Arranger, kullanıcının etkileşimli ve sezgisel bir grafiksel arayüz "
-"kullanarak pdf belgelerini birleştirmesine veya bölmesine ve sayfalarını "
-"döndürmesine, kırpmasına ve yeniden düzenlemesine yardımcı olan küçük bir "
-"python-gtk uygulamasıdır. pikepdf için bir önyüzdür."
+"PDF 편집기는 사용자가 PDF 문서를 합치거나 나누고 페이지를 재정렬할 수 있는 다"
+"기능 그래픽 인터페이스를 사용하는 간단한 python-gtk 프로그램입니다."
 
 #: pdfarranger/pdfarranger.py:282
 msgid "Print the version of PDF Arranger and exit"
-msgstr "PDF Arranger sürümünü yazdır ve çık"
+msgstr "PDF 편집기의 버전을 출력한 후 닫기"
 
 #: pdfarranger/pdfarranger.py:290
 msgid "File(s) to open"
-msgstr "Açılacak dosya(lar)"
+msgstr "파일 선택"
 
 #: pdfarranger/pdfarranger.py:395
 msgid "All pages must have the same size."
-msgstr "Tüm sayfalar aynı boyutta olmalıdır."
+msgstr "모든 페이지는 같은 크기이여야만 합니다."
 
 #: pdfarranger/pdfarranger.py:421
 msgid "All supported files"
-msgstr "Desteklenen tüm dosyalar"
+msgstr "지원하는 모든 파일"
 
 #: pdfarranger/pdfarranger.py:425
 msgid "PDF files"
-msgstr "PDF dosyaları"
+msgstr "PDF 파일"
 
 #: pdfarranger/pdfarranger.py:432
 msgid "All files"
-msgstr "Tüm dosyalar"
+msgstr "모든 파일"
 
 #: pdfarranger/pdfarranger.py:437
 msgid "Supported image files"
-msgstr "Desteklenen resim dosyaları"
+msgstr "지원하는 이미지 파일"
 
-#: pdfarranger/pdfarranger.py:653
+#: pdfarranger/pdfarranger.py:634
 msgid "Rendering…"
-msgstr "Oluşturuluyor…"
+msgstr "렌더링 중…"
 
-#: pdfarranger/pdfarranger.py:751
+#: pdfarranger/pdfarranger.py:728
 msgid "untitled"
-msgstr "başlıksız"
+msgstr "제목 없음"
 
-#: pdfarranger/pdfarranger.py:898
+#: pdfarranger/pdfarranger.py:865
+#, python-format
 msgid "Save changes to “{}” before closing?"
-msgstr "Kapatmadan önce değişiklikler “{}” dosyasına kaydedilsin mi?"
+msgstr "닫기 전에 \"{}\"을 편집한 사항을 저장하시겠습니까?"
 
-#: pdfarranger/pdfarranger.py:900
+#: pdfarranger/pdfarranger.py:867
 msgid "Save changes before closing?"
-msgstr "Kapatmadan önce değişiklikler kaydedilsin mi?"
+msgstr "닫기 전에 펀집한 사항을 저장하시겠습니까?"
 
-#: pdfarranger/pdfarranger.py:902
+#: pdfarranger/pdfarranger.py:869
 msgid "Your changes will be lost if you don’t save them."
-msgstr "Kaydetmezseniz değişiklikleriniz yitecektir."
+msgstr "저장하지 않으면 편집한 사항을 잃게 됩니다."
 
-#: pdfarranger/pdfarranger.py:903
+#: pdfarranger/pdfarranger.py:870
 msgid "Do_n’t Save"
-msgstr "Kaydet_me"
+msgstr "저장 안 함(_N)"
 
-#: pdfarranger/pdfarranger.py:903
+#: pdfarranger/pdfarranger.py:870
 msgid "_Cancel"
-msgstr "_İptal"
+msgstr "취소(_C)"
 
-#: pdfarranger/pdfarranger.py:903 data/menu.ui.h:3
+#: pdfarranger/pdfarranger.py:870 data/menu.ui.h:3
 msgid "_Save"
-msgstr "_Kaydet"
+msgstr "저장(_S)"
 
-#: pdfarranger/pdfarranger.py:953
+#: pdfarranger/pdfarranger.py:920
 msgid "Export…"
-msgstr "Dışa Aktar…"
+msgstr "내보내기…"
 
-#: pdfarranger/pdfarranger.py:1063
+#: pdfarranger/pdfarranger.py:1030
 msgid "Import…"
-msgstr "İçe Aktar…"
+msgstr "불러오기…"
 
-#: pdfarranger/pdfarranger.py:1170
+#: pdfarranger/pdfarranger.py:1137
 msgid "Pasted data not valid. Aborting paste."
-msgstr "Yapıştırılan veri geçersiz. Yapıştırılmıyor."
+msgstr "붙여넣은 데이터가 잘못되었습니다."
 
-#: pdfarranger/pdfarranger.py:1271
+#: pdfarranger/pdfarranger.py:1238
 msgid "PDF document is damaged"
-msgstr "PDF belgesi hasarlı"
+msgstr "PDF 문서가 손상되었습니다"
 
-#: pdfarranger/pdfarranger.py:2099
+#: pdfarranger/pdfarranger.py:2067
 #, python-format
 msgid ""
 "%s is a tool for rearranging and modifying PDF files. Developed using GTK+ "
 "and Python"
 msgstr ""
-"%s, PDF dosyalarını yeniden sıralama ve düzenleme aracıdır. GTK+ ve Python "
-"kullanılarak geliştirilmiştir"
+"%s는 GTK+와 파이썬으로 개발된 PDF 편집기이며, PDF 파일을 재정리하고 수정할 "
+"수 있습니다"
 
-#: pdfarranger/pdfarranger.py:2102
+#: pdfarranger/pdfarranger.py:2070
 #, python-format
 msgid "(%s uses libqpdf %s and pikepdf %s)"
-msgstr "(%s, libqpdf %s ve pikepdf %s kullanmaktadır)"
+msgstr "(%s는 libqpdf %s와 pikepdf %s를 사용합니다)"
 
-#: pdfarranger/pdfarranger.py:2104
+#: pdfarranger/pdfarranger.py:2072
 msgid "Maintainers and contributors"
-msgstr "Bakımcılar ve katkıcılar"
+msgstr "만든 사람과 기여자"
 
-#: pdfarranger/pdfarranger.py:2109
+#: pdfarranger/pdfarranger.py:2077
 msgid "GNU General Public License (GPL) Version 3."
-msgstr "GNU Genel Kamu Lisansı (GPL) Sürüm 3."
+msgstr "GNU General Public License (GPL) 버전 3을 사용합니다."
 
-#: pdfarranger/pdfarranger.py:2137
+#: pdfarranger/pdfarranger.py:2105
 msgid "Selected pages: "
-msgstr "Seçili sayfalar: "
+msgstr "선택된 페이지: "
 
-#: pdfarranger/pdfarranger.py:2142
+#: pdfarranger/pdfarranger.py:2110
 msgid "Page Size:"
-msgstr "Sayfa Boyutu:"
+msgstr "페이지 크기:"
 
 #: pdfarranger/splitter.py:26
 msgid "Split Pages"
-msgstr "Sayfaları Böl"
+msgstr "페이지 나누기"
 
 #: pdfarranger/splitter.py:58
 msgid "Columns"
-msgstr "Sütunlar"
+msgstr "행"
 
 #: pdfarranger/splitter.py:58
 msgid "Rows"
-msgstr "Satırlar"
+msgstr "열"
 
 #: pdfarranger/splitter.py:59
 msgid "Vertical Splits"
-msgstr "Dikey Bölmeler"
+msgstr "세로로 나누기"
 
 #: pdfarranger/splitter.py:59
 msgid "Horizontal Splits"
-msgstr "Yatay Bölmeler"
+msgstr "가로로 나누기"
 
 #: pdfarranger/splitter.py:60
 msgid "Equal column width"
-msgstr "Eşit sütun genişliği"
+msgstr "행 너비 맞추기"
 
 #: pdfarranger/splitter.py:60
 msgid "Equal row height"
-msgstr "Eşit satır yüksekliği"
+msgstr "열 높이 맞추기"
 
 #: pdfarranger/splitter.py:85
 msgid "#Col"
-msgstr "#Süt"
+msgstr "#Col"
 
 #: pdfarranger/splitter.py:85
 msgid "#Row"
-msgstr "#Sat"
+msgstr "#Row"
 
 #: pdfarranger/splitter.py:86
 msgid "Width in %"
-msgstr "% olarak genişlik"
+msgstr "너비(%)"
 
 #: pdfarranger/splitter.py:86
 msgid "Height in %"
-msgstr "% olarak yükseklik"
+msgstr "높이(%)"
 
 #: data/pdfarranger.ui.h:1
 msgid "Open a file and append it to the current document"
-msgstr "Dosya aç ve geçerli belgenin sonuna iliştir"
+msgstr ""
 
 #: data/pdfarranger.ui.h:2
 msgid "Save"
-msgstr "Kaydet"
+msgstr "저장"
 
 #: data/pdfarranger.ui.h:3
 msgid "Save As"
-msgstr "Farklı Kaydet"
+msgstr "다른 이름으로 저장"
 
 #: data/pdfarranger.ui.h:4
 msgid "Number of Pages"
-msgstr "Sayfa Sayısı"
+msgstr "페이지 수"
 
 #: data/pdfarranger.ui.h:5
 msgid "Main Menu"
-msgstr "Ana Menü"
+msgstr "메인 메뉴"
 
 #: data/pdfarranger.ui.h:6
 msgid "Zoom In"
-msgstr "Yakınlaştır"
+msgstr "확대"
 
 #: data/pdfarranger.ui.h:7
 msgid "Zoom Out"
-msgstr "Uzaklaştır"
+msgstr "축소"
 
 #: data/pdfarranger.ui.h:8
 msgid "Rotate Left"
-msgstr "Sola Döndür"
+msgstr "왼쪽으로 회전"
 
 #: data/pdfarranger.ui.h:9
 msgid "Rotate Right"
-msgstr "Sağa Döndür"
+msgstr "오른쪽으로 회전"
 
 #: data/menu.ui.h:1
 msgid "_Import"
-msgstr "İ_çe Aktar"
+msgstr "불러오기(_I)"
 
 #: data/menu.ui.h:2
 msgid "_New Window"
-msgstr "_Yeni Pencere"
+msgstr "새 창(_N)"
 
 #: data/menu.ui.h:4
 msgid "Save _As…"
-msgstr "_Farklı Kaydet…"
+msgstr "다른 이름으로 저장…(_A)"
 
 #: data/menu.ui.h:5
 msgid "E_xport"
-msgstr "_Dışa Aktar"
+msgstr "내보내기(_X)"
 
 #: data/menu.ui.h:6
 msgid "E_xport Selection to a Single File…"
-msgstr "Seçimi Tek Dosyaya D_ışa Aktar…"
+msgstr "선택된 내용들을 하나의 파일로 내보내기…(_X)"
 
 #: data/menu.ui.h:7
 msgid "Export Selection to _Individual Files…"
-msgstr "Seçimi _Ayrı Dosyalara Dışa Aktar…"
+msgstr "선택된 내용들을 개별의 파일로 내보내기…(_I)"
 
 #: data/menu.ui.h:8
 msgid "Export _All Pages to Individual Files…"
-msgstr "_Tüm Sayfaları Ayrı Dosyalara Dışa Aktar…"
+msgstr "모든 페이지를 개별의 파일로 내보내기…(_A)"
 
 #: data/menu.ui.h:9
 msgid "_Undo"
-msgstr "_Geri Al"
+msgstr "실행 취소(_U)"
 
 #: data/menu.ui.h:10
 msgid "_Redo"
-msgstr "_Yinele"
+msgstr "다시 실행(_R)"
 
 #: data/menu.ui.h:11
 msgid "_Edit"
-msgstr "_Düzenle"
+msgstr "편집(_E)"
 
 #: data/menu.ui.h:12
 msgid "Rotate _Left"
-msgstr "So_la Döndür"
+msgstr "왼쪽으로 회전(_L)"
 
 #: data/menu.ui.h:13
 msgid "_Rotate Right"
-msgstr "Sağa Döndü_r"
+msgstr "오른쪽으로 회전(_R)"
 
 #: data/menu.ui.h:14
 msgid "_Page Format"
-msgstr "_Sayfa Biçimi"
+msgstr "용지 크기(_P)"
 
 #: data/menu.ui.h:15
 msgid "Crop White Borders"
-msgstr "Beyaz Kenarları Kırp"
+msgstr "흰 테두리 잘라내기"
 
 #: data/menu.ui.h:16
 msgid "_Delete"
-msgstr "_Sil"
+msgstr "삭제(_D)"
 
 #: data/menu.ui.h:17
 msgid "Dupl_icate"
-msgstr "_Çoğalt"
+msgstr "복제(_I)"
 
 #: data/menu.ui.h:18
 msgid "Re_verse Order"
-msgstr "Sırayı _Evir"
+msgstr "순서 바꾸기(_V)"
 
 #: data/menu.ui.h:19
 msgid "_Split Pages"
-msgstr "Sayfaları _Böl"
+msgstr "페이지 나누기(_S)"
 
 #: data/menu.ui.h:20
 msgid "Cu_t"
-msgstr "_Kes"
+msgstr "잘라내기(_T)"
 
 #: data/menu.ui.h:21
 msgid "_Copy"
-msgstr "K_opyala"
+msgstr "복사(_C)"
 
 #: data/menu.ui.h:22
 msgid "Paste _After"
-msgstr "_Sonrasına Yapıştır"
+msgstr "뒤 페이지에 붙여넣기(_A)"
 
 #: data/menu.ui.h:23
 msgid "Paste _Before"
-msgstr "_Öncesine Yapıştır"
+msgstr "앞 페이지에 붙여넣기(_B)"
 
 #: data/menu.ui.h:24
 msgid "Paste As _Odd Pages"
-msgstr "_Tek Sayfalar Olarak Yapıştır"
+msgstr ""
 
 #: data/menu.ui.h:25
 msgid "Paste As _Even Pages"
-msgstr "_Çift Sayfalar Olarak Yapıştır"
+msgstr ""
 
 #: data/menu.ui.h:26
 msgid "Insert Blan_k Page"
-msgstr "B_oş Sayfa Ekle"
+msgstr "빈 페이지 삽입(_K)"
 
 #: data/menu.ui.h:27
 msgid "Generate Booklet"
-msgstr "Kitapçık Oluştur"
+msgstr "북클렛 만들기"
 
 #: data/menu.ui.h:28
 msgid "_Select"
-msgstr "_Seç"
+msgstr "선택(_S)"
 
 #: data/menu.ui.h:29
 msgid "Select _All"
-msgstr "_Tümünü Seç"
+msgstr "모두 선택(_A)"
 
 #: data/menu.ui.h:30
 msgid "_Deselect All"
-msgstr "_Hiçbirini Seçme"
+msgstr "모두 선택 해제(_D)"
 
 #: data/menu.ui.h:31
 msgid "Select _Odd Pages"
-msgstr "_Tek Sayfaları Seç"
+msgstr ""
 
 #: data/menu.ui.h:32
 msgid "Select _Even Pages"
-msgstr "_Çift Sayfaları Seç"
+msgstr ""
 
 #: data/menu.ui.h:33
 msgid "All From _Same File"
-msgstr "_Aynı Dosyadan Tümü"
+msgstr ""
 
 #: data/menu.ui.h:34
 msgid "Same Page _Format"
-msgstr "Aynı Sayfa _Biçimi"
+msgstr "같은 페이지 형식(_F)"
 
 #: data/menu.ui.h:35
 msgid "_Invert Selection"
-msgstr "Seçimi _Evir"
+msgstr "선택 반전(_I)"
 
 #: data/menu.ui.h:36
 msgid "Zoom _In"
-msgstr "_Yakınlaştır"
+msgstr "확대(_I)"
 
 #: data/menu.ui.h:37
 msgid "Zoom _Out"
-msgstr "_Uzaklaştır"
+msgstr "축소(_O)"
 
 #: data/menu.ui.h:38
 msgid "Edit _Properties"
-msgstr "_Özellikleri Düzenle"
+msgstr "정보 편집(_E)"
 
 #: data/menu.ui.h:39
 msgid "_About"
-msgstr "_Hakkında"
+msgstr "정보(_A)"
 
 #: data/menu.ui.h:40
 msgid "_Quit"
-msgstr "_Çık"
+msgstr "종료(_Q)"
 
 #: data/menu.ui.h:41
 msgid "Past_e Special"
-msgstr "Öz_el Yapıştır"
+msgstr "다른 방식으로 붙여놓기(_E)"

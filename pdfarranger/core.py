@@ -305,6 +305,23 @@ class PDFDoc:
         else:
             raise PDFDocError(_("File is neither pdf nor image"))
 
+        self.transparent_link_annots_removed = [False] * self.document.get_n_pages()
+
+    def get_page(self, n_page):
+        """Get a page where transparent link annotations are removed.
+
+        By removing them memory usage will be lower.
+        """
+        page = self.document.get_page(n_page)
+        if self.transparent_link_annots_removed[n_page]:
+            return page
+        annot_mapping_list = page.get_annot_mapping()
+        for annot_mapping in annot_mapping_list:
+            a = annot_mapping.annot
+            if a.get_annot_type() == Poppler.AnnotType.LINK and a.get_color() is None:
+                page.remove_annot(a)
+        self.transparent_link_annots_removed[n_page] = True
+        return page
 
 class PageAdder:
     """Helper class to add pages to the current model."""
@@ -390,22 +407,21 @@ class PageAdder:
         if add_to_undomanager:
             self.app.undomanager.commit("Add")
             self.app.set_unsaved(True)
-        self.app.model_lock()
-        for p in self.pages:
-            m = [p, p.description()]
-            if self.treerowref:
-                iter_to = self.app.model.get_iter(self.treerowref.get_path())
-                if self.before:
-                    it = self.app.model.insert_before(iter_to, m)
+        with self.app.render_lock():
+            for p in self.pages:
+                m = [p, p.description()]
+                if self.treerowref:
+                    iter_to = self.app.model.get_iter(self.treerowref.get_path())
+                    if self.before:
+                        it = self.app.model.insert_before(iter_to, m)
+                    else:
+                        it = self.app.model.insert_after(iter_to, m)
                 else:
-                    it = self.app.model.insert_after(iter_to, m)
-            else:
-                it = self.app.model.append(m)
-            if select_added:
-                path = self.app.model.get_path(it)
-                self.app.iconview.select_path(path)
-            self.app.update_geometry(it)
-        self.app.model_unlock()
+                    it = self.app.model.append(m)
+                if select_added:
+                    path = self.app.model.get_path(it)
+                    self.app.iconview.select_path(path)
+                self.app.update_geometry(it)
         if add_to_undomanager:
             GObject.idle_add(self.app.retitle)
             self.app.zoom_set(self.app.zoom_level)
@@ -496,7 +512,7 @@ class PDFRenderer(threading.Thread, GObject.GObject):
             thumbnail = p.preview
         else:
             pdfdoc = self.pdfqueue[p.nfile - 1]
-            page = pdfdoc.document.get_page(p.npage - 1)
+            page = pdfdoc.get_page(p.npage - 1)
             w, h = page.get_size()
             thumbnail = cairo.ImageSurface(
                 cairo.FORMAT_ARGB32, int(0.5 + w * scale), int(0.5 + h * scale)
