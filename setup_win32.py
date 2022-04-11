@@ -1,4 +1,4 @@
-VERSION='1.8.0'
+VERSION='1.9.0.dev1'
 
 from cx_Freeze import setup, Executable
 import os
@@ -50,6 +50,7 @@ def addicons():
         'actions/media-eject',
         'actions/document-save',
         'actions/document-save-as',
+        'actions/document-open',
         'actions/insert-image',
         'actions/object-rotate-left',
         'actions/object-rotate-right',
@@ -90,6 +91,7 @@ required_dlls = [
     'poppler-glib-8',
     'xml2-2',
     'rsvg-2-2',
+    'handy-1-0',
 ]
 
 for dll in required_dlls:
@@ -112,7 +114,8 @@ required_gi_namespaces = [
     "GModule-2.0",
     "Atk-1.0",
     "Poppler-0.18",
-    "HarfBuzz-0.0"
+    "HarfBuzz-0.0",
+    "Handy-1",
 ]
 
 for ns in required_gi_namespaces:
@@ -174,6 +177,9 @@ class bdist_zip(distutils.cmd.Command):
         fullname = self.distribution.get_fullname()
         build_exe.build_exe = os.path.join(build_base, fullname)
         build_exe.run()
+        config_ini = os.path.join(build_exe.build_exe, 'config.ini')
+        f = open(config_ini, 'w')
+        f.close()
         dist_dir = self.get_finalized_command('bdist').dist_dir
         archname = os.path.join(dist_dir, get_target_name('portable'))
         self.make_archive(archname, 'zip', root_dir=build_base, base_dir=fullname)

@@ -20,7 +20,7 @@ import sys  # for processing of command line args
 import tempfile
 import signal
 import mimetypes
-import warnings
+import multiprocessing
 import traceback
 import locale  # for multilanguage support
 import gettext
@@ -30,7 +30,9 @@ import ctypes
 import pikepdf
 from urllib.request import url2pathname
 from functools import lru_cache
+from math import log
 
+multiprocessing.freeze_support()  # Does nothing in Linux
 
 sharedir = os.path.join(sys.prefix, 'share')
 basedir = '.'
@@ -70,7 +72,7 @@ else:
     del libintl
 
 APPNAME = 'PDF Arranger'
-VERSION = '1.8.0'
+VERSION = '1.9.0.dev1'
 WEBSITE = 'https://github.com/pdfarranger/pdfarranger'
 
 if os.name == 'nt':
@@ -86,6 +88,11 @@ import gi
 gi.check_version('3.10.2')
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
+try:
+    gi.require_version('Handy', '1')
+    from gi.repository import Handy
+except ValueError:
+    Handy = None
 
 if Gtk.check_version(3, 12, 0):
     raise Exception('You do not have the required version of GTK+ installed. ' +
@@ -138,33 +145,6 @@ def _install_workaround_bug29():
 
 
 _install_workaround_bug29()
-
-
-def warn_dialog(func):
-    """ Decorator which redirect warnings module messages to a gkt MessageDialog """
-
-    class ShowWarning:
-        def __init__(self):
-            self.buffer = ""
-
-        def __call__(self, message, category, filename, lineno, f=None, line=None):
-            s = warnings.formatwarning(message, category, filename, lineno, line)
-            if sys.stderr is not None:
-                sys.stderr.write(s + '\n')
-            self.buffer += str(message) + '\n'
-
-    def wrapper(*args, **kwargs):
-        self = args[0]
-        backup_showwarning = warnings.showwarning
-        warnings.showwarning = ShowWarning()
-        try:
-            func(*args, **kwargs)
-            if len(warnings.showwarning.buffer) > 0:
-                self.error_message_dialog(warnings.showwarning.buffer, Gtk.MessageType.WARNING)
-        finally:
-            warnings.showwarning = backup_showwarning
-
-    return wrapper
 
 
 def malloc_trim():
@@ -239,28 +219,30 @@ class PdfArranger(Gtk.Application):
         self.is_unsaved = False
         self.zoom_level = None
         self.zoom_level_old = 0
+        self.zoom_level_limits = [-10, 40]
         self.zoom_scale = None
-        self.zoom_full_page = False
+        self.zoom_fit_page = False
         self.render_id = None
         self.id_scroll_to_sel = None
         self.target_is_intern = True
 
         self.export_directory = os.path.expanduser('~')
-        self.import_directory = self.export_directory
+        self.import_directory = None
         self.nfile = 0
-        self.iv_auto_scroll_direction = 0
         self.iv_auto_scroll_timer = None
-        self.vp_css_margin = 0
         self.pdfqueue = []
         self.metadata = {}
         self.pressed_button = None
         self.click_path = None
         self.rendering_thread = None
+        self.export_process = None
+        self.post_action = None
         self.export_file = None
         self.drag_path = None
         self.drag_pos = Gtk.IconViewDropPosition.DROP_RIGHT
         self.window_width_old = 0
         self.set_iv_visible_id = None
+        self.vadj_percent = None
 
         # Clipboard for cut copy paste
         self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
@@ -292,7 +274,8 @@ class PdfArranger(Gtk.Application):
             "[FILES]",
         )
 
-    def __build_from_file(self, path):
+    @staticmethod
+    def __resource_path(path):
         """ Return the path of a resource file """
         # TODO: May be we could use Application.set_resource_base_path and
         # get_menu_by_id in place of that
@@ -304,14 +287,50 @@ class PdfArranger(Gtk.Application):
             f = '/usr/share/{}/{}'.format(DOMAIN, path)
         if not os.path.exists(f):
             f = '/usr/local/share/{}/{}'.format(DOMAIN, path)
+        return f
+
+    def __create_main_window(self):
+        """Create the Gtk.ApplicationWindow or Handy.ApplicationWindow"""
         b = Gtk.Builder()
         b.set_translation_domain(DOMAIN)
-        b.add_from_file(f)
+        with open(self.__resource_path(DOMAIN + ".ui")) as ff:
+            s = ff.read()
+            if Handy:
+                Handy.init()
+                s = s.replace("GtkHeaderBar", "HdyHeaderBar")
+            b.add_from_string(s)
         b.connect_signals(self)
+        self.uiXML = b
+        self.window = self.uiXML.get_object("main_window")
+        if Handy:
+            try:
+                Handy.StyleManager.get_default().set_color_scheme(
+                    Handy.ColorScheme.PREFER_LIGHT
+                )
+            except AttributeError:
+                # This libhandy is too old. 1.5.90 needed ?
+                pass
+            # Add an intermediate vertical box
+            box = Gtk.Box()
+            box.props.orientation = Gtk.Orientation.VERTICAL
+            hd = self.uiXML.get_object("header_bar")
+            mb = self.uiXML.get_object("main_box")
+            self.window.remove(hd)
+            self.window.remove(mb)
+            # Replace the Gtk.ApplicationWindow by the Handy one
+            self.window = Handy.ApplicationWindow()
+            box.add(hd)
+            mb.props.expand = True
+            box.add(mb)
+            self.window.add(box)
+        self.window.set_default_icon_name(ICON_ID)
         return b
 
     def __create_menus(self):
-        b = self.__build_from_file("menu.ui")
+        b = Gtk.Builder()
+        b.set_translation_domain(DOMAIN)
+        b.add_from_file(self.__resource_path("menu.ui"))
+        b.connect_signals(self)
         self.config.set_actions(b)
         self.popup = Gtk.Menu.new_from_model(b.get_object("popup_menu"))
         self.popup.attach_to_widget(self.window, None)
@@ -319,10 +338,10 @@ class PdfArranger(Gtk.Application):
         main_menu.set_menu_model(b.get_object("main_menu"))
 
     def __create_actions(self):
-        # Both Gtk.ApplicationWindow and Gtk.Application are Gio.ActionMap. Some action are window
+        # Both Handy.ApplicationWindow and Gtk.Application are Gio.ActionMap. Some action are window
         # related some other are application related. As pdfarrager is a single window app does not
         # matter that much.
-        self.window.add_action_entries([
+        self.actions = [
             ('rotate', self.rotate_page_action, 'i'),
             ('delete', self.on_action_delete),
             ('duplicate', self.duplicate),
@@ -334,8 +353,12 @@ class PdfArranger(Gtk.Application):
             ('save', self.on_action_save),
             ('save-as', self.on_action_save_as),
             ('new', self.on_action_new),
-            ('import', self.on_action_add_doc_activate),
-            ('zoom', self.zoom_change, 'i'),
+            ('open', self.on_action_open),
+            ('import', self.on_action_import),
+            ('zoom-in', self.on_action_zoom_in),
+            ('zoom-out', self.on_action_zoom_out),
+            ('zoom-fit', self.on_action_zoom_fit),
+            ('close', self.on_action_close),
             ('quit', self.on_quit),
             ('undo', self.undomanager.undo),
             ('redo', self.undomanager.redo),
@@ -351,16 +374,16 @@ class PdfArranger(Gtk.Application):
             ("insert-blank-page", self.insert_blank_page),
             ('sign', self.sign_pdf),
             ("generate-booklet", self.generate_booklet),
-        ])
+        ]
+        self.window.add_action_entries(self.actions)
 
-        main_menu = self.uiXML.get_object("main_menu_button")
-        self.window.add_action(Gio.PropertyAction.new("main-menu", main_menu, "active"))
+        self.main_menu = self.uiXML.get_object("main_menu_button")
+        self.window.add_action(Gio.PropertyAction.new("main-menu", self.main_menu, "active"))
         for a, k in self.config.get_accels():
             self.set_accels_for_action("win." + a, [k] if isinstance(k, str) else k)
         # Disable actions
         self.iv_selection_changed_event()
         self.window_focus_in_out_event()
-        self.__update_num_pages(self.iconview.get_model())
         self.undomanager.set_actions(self.window.lookup_action('undo'),
                                      self.window.lookup_action('redo'))
 
@@ -391,9 +414,10 @@ class PdfArranger(Gtk.Application):
                  for ref in ref_list]
 
         # Need uniform page size.
-        first_page_size = pages[0].size_in_points()
+        p1w, p1h = pages[0].size_in_points()
         for page in pages[1:]:
-            if first_page_size != page.size_in_points():
+            pw, ph = page.size_in_points()
+            if abs(p1w-pw) > 1e-2 and abs(p1h-ph) > 1e-2:
                 msg = _('All pages must have the same size.')
                 self.error_message_dialog(msg)
                 return
@@ -401,7 +425,7 @@ class PdfArranger(Gtk.Application):
         # We need a multiple of 4
         blank_page_count = 0 if len(pages) % 4 == 0 else 4 - len(pages) % 4
         if blank_page_count > 0:
-            file = exporter.create_blank_page(self.tmp_dir, pages[0].size)
+            file = exporter.create_blank_page(self.tmp_dir, pages[0].size_in_points())
             adder = PageAdder(self)
             for __ in range(blank_page_count):
                 adder.addpages(file)
@@ -445,6 +469,12 @@ class PdfArranger(Gtk.Application):
             filter_list.append(f_img)
         return filter_list
 
+    def set_title(self, title):
+        if Handy:
+            self.uiXML.get_object('header_bar').set_title(title)
+        else:
+            self.window.set_title(title)
+
     def do_activate(self):
         """ https://lazka.github.io/pgi-docs/Gio-2.0/classes/Application.html#Gio.Application.do_activate """
         # TODO: huge method that should be splitted
@@ -453,12 +483,8 @@ class PdfArranger(Gtk.Application):
         if not os.path.exists(iconsdir):
             iconsdir = os.path.join(sharedir, 'data', 'icons')
         Gtk.IconTheme.get_default().append_search_path(iconsdir)
-        Gtk.Window.set_default_icon_name(ICON_ID)
-        self.uiXML = self.__build_from_file(DOMAIN + '.ui')
-        # Create the main window, and attach delete_event signal to terminating
-        # the application
-        self.window = self.uiXML.get_object('main_window')
-        self.window.set_title(APPNAME)
+        self.__create_main_window()
+        self.set_title(APPNAME)
         self.window.set_border_width(0)
         self.window.set_application(self)
         if self.config.maximized():
@@ -469,9 +495,6 @@ class PdfArranger(Gtk.Application):
         self.window.connect('focus_in_event', self.window_focus_in_out_event)
         self.window.connect('focus_out_event', self.window_focus_in_out_event)
         self.window.connect('configure_event', self.window_configure_event)
-        self.window.connect('button_release_event', self.window_button_release_event)
-        self.window.connect('enter_notify_event', self.window_enter_notify_event)
-        self.window.connect('window_state_event', self.window_state_event)
 
         if hasattr(GLib, "unix_signal_add"):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self.close_application)
@@ -485,7 +508,6 @@ class PdfArranger(Gtk.Application):
         self.sw.connect('drag_data_received', self.sw_dnd_received_data)
         self.sw.connect('button_press_event', self.sw_button_press_event)
         self.sw.connect('scroll_event', self.sw_scroll_event)
-        self.sw.connect('motion_notify_event', self.sw_motion)
 
         # Create ListStore model and IconView
         self.model = Gtk.ListStore(GObject.TYPE_PYOBJECT, str)
@@ -527,12 +549,9 @@ class PdfArranger(Gtk.Application):
         self.id_selection_changed_event = self.iconview.connect('selection_changed',
                                                           self.iv_selection_changed_event)
         self.iconview.connect('key_press_event', self.iv_key_press_event)
+        self.iconview.connect('size_allocate', self.iv_size_allocate)
 
-        self.sw.add_with_viewport(self.iconview)
-
-        self.model.connect('row-inserted', self.__update_num_pages)
-        self.model.connect('row-deleted', self.__update_num_pages)
-        self.model.connect('row-deleted', self.reset_export_file)
+        self.sw.add(self.iconview)
 
         # Status bar to the left
         self.status_bar = self.uiXML.get_object('statusbar')
@@ -543,10 +562,8 @@ class PdfArranger(Gtk.Application):
         # Vertical scrollbar
         vscrollbar = self.sw.get_vscrollbar()
         vscrollbar.connect('value_changed', self.vscrollbar_value_changed)
+        vscrollbar.props.adjustment.step_increment = 75
 
-        # Define window callback function and show window
-        self.window.connect('check_resize', self.on_window_size_request)
-        self.window.connect_after('check_resize', self.hide_horizontal_scrollbar)
         self.window.show_all()
 
         # Change iconview color background
@@ -563,7 +580,7 @@ class PdfArranger(Gtk.Application):
         self.iconview.override_background_color(Gtk.StateFlags.PRELIGHT,
                                                 color_prelight)
 
-        # Set outline properties for iconview items i.e. cursor look
+        # Set cursor look, hide rubberband selection rectangle, hide overshoot gradient
         style_provider = Gtk.CssProvider()
         css_data = """
         iconview {
@@ -572,6 +589,13 @@ class PdfArranger(Gtk.Application):
             outline-offset: -2px;
             outline-width: 2px;
             -gtk-outline-radius: 2px;
+        }
+        iconview rubberband {
+            border-color: alpha(currentColor, 0.0);
+            background-color: alpha(currentColor, 0.0);
+        }
+        scrolledwindow overshoot {
+            background: none;
         }
         """
         style_provider.load_from_data(bytes(css_data.encode()))
@@ -607,17 +631,21 @@ class PdfArranger(Gtk.Application):
             files = [Gio.File.new_for_commandline_arg(i)
                     for i in options.lookup_value(GLib.OPTION_REMAINING)]
 
-            a = PageAdder(self)
-            for f in files:
-                try:
-                    a.addpages(f.get_path())
-                except FileNotFoundError as e:
-                    print(e, file=sys.stderr)
-                    self.error_message_dialog(e)
-
-            a.commit(select_added=False, add_to_undomanager=True)
+            GObject.idle_add(self.add_files, files)
 
         return 0
+
+    def add_files(self, files):
+        """Add files passed as command line arguments."""
+        a = PageAdder(self)
+        for f in files:
+            try:
+                a.addpages(f.get_path())
+            except FileNotFoundError as e:
+                print(e, file=sys.stderr)
+                self.error_message_dialog(e)
+
+        a.commit(select_added=False, add_to_undomanager=True)
 
     @staticmethod
     def set_text_renderer_cell_height(iconview):
@@ -641,6 +669,8 @@ class PdfArranger(Gtk.Application):
 
     def render(self):
         self.render_id = None
+        if not self.sw.is_sensitive():
+            return
         alive = self.quit_rendering()
         if alive:
             self.silent_render()
@@ -699,41 +729,23 @@ class PdfArranger(Gtk.Application):
         if self.window_width_old not in [0, event.width] and len(self.model) > 0:
             if self.set_iv_visible_id:
                 GObject.source_remove(self.set_iv_visible_id)
-            self.set_iv_visible_id = GObject.timeout_add(1000, self.set_iconview_visible)
+            self.set_iv_visible_id = GObject.timeout_add(500, self.set_iconview_visible)
             self.iconview.set_visible(False)
         self.window_width_old = event.width
         if len(self.model) > 1: # Don't trigger extra render after first page is inserted
             self.silent_render()
 
-    def window_button_release_event(self, _window, event):
-        """Mouse button release on window."""
-        if event.button == 1:
-            self.set_iconview_visible(timeout=False)
-
-    def window_enter_notify_event(self, _window, event):
-        """Mouse pointer enter window."""
-        if os.name == 'nt' or event.state & Gdk.ModifierType.BUTTON1_MASK:
-            # In Windows this is triggered when dragging window edge. Instead the release event
-            # is usually triggered when releasing button. Also triggered in Mate desktop.
-            return
-        self.set_iconview_visible(timeout=False)
-
-    def window_state_event(self, _window, _event):
-        """Window state change."""
-        GObject.timeout_add(100, self.set_iconview_visible)
-
-    def sw_motion(self, _scrolledwindow, _event):
-        """Mouse movement in scrolled window."""
-        self.set_iconview_visible(timeout=False)
-
-    def set_iconview_visible(self, timeout=True):
-        if timeout:
-            self.set_iv_visible_id = None
-        if not self.iconview.get_visible():
-            self.update_iconview_geometry()
-            self.scroll_to_selection()
-            GObject.idle_add(self.iconview.set_visible, True)
-            self.iconview.grab_focus()
+    def set_iconview_visible(self):
+        self.set_iv_visible_id = None
+        if len(self.iconview.get_selected_items()) == 0:
+            self.vadj_percent_handler(store=True)
+        self.update_iconview_geometry()
+        self.scroll_to_selection()
+        self.sw.set_visible(False)
+        self.sw.set_visible(True)
+        GObject.idle_add(self.iconview.set_visible, True)
+        self.iconview.grab_focus()
+        self.silent_render()
 
     def set_export_file(self, file):
         if file != self.export_file:
@@ -747,17 +759,17 @@ class PdfArranger(Gtk.Application):
     def retitle(self):
         if self.export_file:
             title = self.export_file
-            if self.is_unsaved:
-                title += '*'
         else:
             title = _('untitled')
+        if self.is_unsaved:
+            title += '*'
 
-        all_files = self.active_file_names()
+        all_files = set(os.path.splitext(doc.basename)[0] for doc in self.pdfqueue)
         if len(all_files) > 0:
             title += ' [' + ', '.join(sorted(all_files)) + ']'
 
         title += ' – ' + APPNAME
-        self.window.set_title(title)
+        self.set_title(title)
         return False
 
     def update_thumbnail(self, _obj, ref, thumbnail, resample, scale, is_preview):
@@ -784,7 +796,6 @@ class PdfArranger(Gtk.Application):
             return
         page.thumbnail = thumbnail
         page.resample = resample
-        page.zoom = self.zoom_scale
         if is_preview:
             page.preview = thumbnail
         # Let iconview refresh the thumbnail (only) by selecting it
@@ -803,38 +814,27 @@ class PdfArranger(Gtk.Application):
 
         A item is considered visible if more than 50% of item is visible.
         """
-        sw_vadj = self.sw.get_vadjustment()
-        sw_vpos = sw_vadj.get_value()
-        columns_nr = max(self.iconview.get_columns(), 1)
+        vr = self.iconview.get_visible_range()
+        if vr is None:
+            return -1, -1
+        first_ind = vr[0].get_indices()[0]
+        last_ind = vr[1].get_indices()[0]
+        first_cell = self.iconview.get_cell_rect(vr[0])[1]
+        last_cell = self.iconview.get_cell_rect(vr[1])[1]
         sw_height = self.sw.get_allocated_height()
-        range_start = range_end = -1
-        item_nr = 0
-        while item_nr < len(self.model):
-            path = Gtk.TreePath.new_from_indices([item_nr])
-            cell_rect = self.iconview.get_cell_rect(path)[1]
-            item_center = cell_rect.y + cell_rect.height / 2
-            if range_start < 0 and item_center > sw_vpos - self.vp_css_margin:
-                range_start = item_nr
-            if item_center < sw_vpos + sw_height - self.vp_css_margin:
-                range_end = item_nr + columns_nr - 1
-            else:
-                break
-            item_nr += columns_nr
-        if range_start < 0 and len(self.model) > 0:
-            range_start = len(self.model) - 1
-        return range_start, min(max(range_end, range_start), len(self.model) - 1)
+        if first_cell.y + first_cell.height * 0.5 < 0:
+            columns_nr = self.iconview.get_columns()
+            first_ind = min(first_ind + columns_nr, len(self.model) - 1)
+        if last_cell.y + last_cell.height * 0.5 > sw_height:
+            last_item_col = self.iconview.get_item_column(vr[1])
+            last_ind = max(last_ind - last_item_col - 1, 0)
+        return min(first_ind, last_ind), max(first_ind, last_ind)
 
-    def on_window_size_request(self, _window):
-        """Main Window resize."""
-        if self.iconview.get_visible():
-            self.update_iconview_geometry()
-
-    def hide_horizontal_scrollbar(self, _window):
+    def hide_horizontal_scrollbar(self):
         """Hide horizontal scrollbar when not needed."""
-        sw_width = self.sw.get_allocated_width()
-        iv_width = self.iconview.get_allocated_width()
+        sw_hadj = self.sw.get_hadjustment()
         hscrollbar = self.sw.get_hscrollbar()
-        if iv_width <= sw_width:
+        if sw_hadj.get_upper() <= self.sw.get_allocated_width():
             hscrollbar.hide()
         else:
             hscrollbar.show()
@@ -849,7 +849,7 @@ class PdfArranger(Gtk.Application):
             # cell width min limit 50 is set in gtkiconview.c
             cell_width = max(item_width + 2 * cellthmb_xpad + border_and_shadow, 50)
             cell_height = -1
-            if self.zoom_full_page:
+            if self.zoom_fit_page:
                 item_height = max(row[0].height_in_pixel() for row in self.model)
                 cell_height = item_height + 2 * cellthmb_ypad + border_and_shadow
             self.cellthmb.set_fixed_size(cell_width, cell_height)
@@ -869,62 +869,116 @@ class PdfArranger(Gtk.Application):
             self.iconview.set_columns(col_num)
             self.iconview.set_column_spacing(spacing)
             self.iconview.set_margin(margin)
-            if self.vp_css_margin != 6 - margin:
-                # remove margin on top and bottom
-                self.vp_css_margin = 6 - margin
-                css_data = 'window viewport {\
-                margin-top:' + str(self.vp_css_margin) + 'px;\
-                margin-bottom:' + str(self.vp_css_margin) + 'px;}'
-                style_provider = Gtk.CssProvider()
-                style_provider.load_from_data(bytes(css_data.encode()))
-                Gtk.StyleContext.add_provider_for_screen(
-                    Gdk.Screen.get_default(),
-                    style_provider,
-                    Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
-    def update_geometry(self, treeiter):
-        """Recomputes the width and height of the rotated page and saves
-           the result in the ListStore"""
+    def vadj_percent_handler(self, store=False, restore=False):
+        """Store and restore adjustment percentual value."""
+        sw_vadj = self.sw.get_vadjustment()
+        lower_limit = sw_vadj.get_lower()
+        upper_limit = sw_vadj.get_upper()
+        page_size = sw_vadj.get_page_size()
+        sw_vpos = sw_vadj.get_value()
+        vadj_range = upper_limit - lower_limit - page_size
+        if store and self.vadj_percent is None and vadj_range > 0:
+            self.vadj_percent = (sw_vpos - lower_limit) / vadj_range
+        if restore and self.vadj_percent is not None:
+            sw_vadj.set_value(self.vadj_percent * vadj_range + lower_limit)
+            self.vadj_percent = None
 
-        if not self.model.iter_is_valid(treeiter):
-            return
+    def iv_size_allocate(self, _iconview, _allocation):
+        self.hide_horizontal_scrollbar()
+        self.set_adjustment_limits()
+        if self.vadj_percent is not None:
+            self.vadj_percent_handler(restore=True)
 
-        p = self.model.get(treeiter, 0)[0]
-        page = self.pdfqueue[p.nfile - 1].document.get_page(p.npage - 1)
-        p.set_size(page.get_size())
-        self.model.set(treeiter, 0, p)
+    def set_adjustment_limits(self):
+        hscrollbar = self.sw.get_hscrollbar()
+        vscrollbar = self.sw.get_vscrollbar()
+        if len(self.model) == 0:
+            # Hide scrollbars https://gitlab.gnome.org/GNOME/gtk/-/issues/4370 ?
+            hscrollbar.set_range(0, 0)
+            vscrollbar.set_range(0, 0)
+        else:
+            # Remove margins at top and bottom of iconview
+            lower_limit = self.iconview.get_margin() - 6
+            upper_limit = vscrollbar.props.adjustment.get_upper() - lower_limit
+            vscrollbar.set_range(lower_limit, upper_limit)
+
+    def confirm_dialog(self, msg, action):
+        """A dialog for confirmation of an action."""
+        d = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE, msg)
+        d.add_buttons(action, 1, _('_Cancel'), 2)
+        response = d.run()
+        d.destroy()
+        return response == 1
+
+    def save_changes_dialog(self, msg):
+        """A dialog which ask if changes should be saved."""
+        d = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE, msg)
+        d.format_secondary_markup(_("Your changes will be lost if you don’t save them."))
+        d.add_buttons(_('Do_n’t Save'), 1, _('_Cancel'), 2, _('_Save'), 3)
+        response = d.run()
+        d.destroy()
+        return response
+
+    def on_action_close(self, _action, _param, _unknown):
+        """Close all files and restore initial state."""
+        if self.is_unsaved:
+            if len(self.model) == 0:
+                msg = _('Discard changes and close?')
+                confirm = self.confirm_dialog(msg, action=_('_Close'))
+                if not confirm:
+                    return
+            else:
+                if self.export_file:
+                    msg = _('Save changes to “{}” before closing?')
+                    msg = msg.format(os.path.basename(self.export_file))
+                else:
+                    msg = _('Save changes before closing?')
+                response = self.save_changes_dialog(msg)
+                if response == 3:
+                    self.save_or_choose()
+                    self.post_action = 'CLEAR_DATA'
+                    return
+                elif response != 1:
+                    return
+        self.clear_data()
+
+    def clear_data(self):
+        self.model.clear()
+        self.pdfqueue = []
+        self.metadata = {}
+        self.undomanager.clear()
+        self.set_export_file(None)
+        self.set_unsaved(False)
+        self.update_statusbar()
+        malloc_trim()
 
     def on_quit(self, _action, _param=None, _unknown=None):
-        if self.is_unsaved:
-            if self.export_file:
-                msg = _('Save changes to “{}” before closing?').format(os.path.basename(self.export_file))
-            else:
-                msg = _('Save changes before closing?')
-            d = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE, msg)
-            d.format_secondary_markup(_("Your changes will be lost if you don’t save them."))
-            d.add_buttons(_('Do_n’t Save'), 1, _('_Cancel'), 2, _('_Save'), 3)
-            response = d.run()
-            d.destroy()
-
-            if response == 1:
-                # Quit
-                self.close_application()
-            elif response == 2 or response == Gtk.ResponseType.DELETE_EVENT:
-                # DELETE_EVENT is returned if Esc is pressed
-                # Returning True to stop self.window delete_event propagation.
+        if self.export_process and self.export_process.is_alive():
+            msg = _('Abort saving and quit?')
+            confirm = self.confirm_dialog(msg, action=_('_Quit'))
+            if not confirm:
                 return True
-            elif response == 3:
-                # Save.
-                self.save_or_choose()
-                # Quit only if it has been really saved.
-                if self.is_unsaved:
+        elif self.is_unsaved:
+            if len(self.model) == 0:
+                msg = _('Discard changes and quit?')
+                confirm = self.confirm_dialog(msg, action=_('_Quit'))
+                if not confirm:
                     return True
-                self.close_application()
             else:
-                # If unknown return code, do nothing
-                return True
-        else:
-            self.close_application()
+                if self.export_file:
+                    msg = _('Save changes to “{}” before quitting?')
+                    msg = msg.format(os.path.basename(self.export_file))
+                else:
+                    msg = _('Save changes before quitting?')
+                response = self.save_changes_dialog(msg)
+                if response == 3:
+                    self.save_or_choose()
+                    self.post_action = 'CLOSE_APPLICATION'
+                    return True
+                elif response != 1:
+                    return True
+        self.close_application()
 
     def close_application(self, _widget=None, _event=None, _data=None):
         """Termination"""
@@ -932,6 +986,13 @@ class PdfArranger(Gtk.Application):
             self.rendering_thread.quit = True
             self.rendering_thread.join()
             self.rendering_thread.pdfqueue = []
+
+        if self.export_process:
+            self.quit_flag.set()
+            self.export_process.join(timeout=2)
+            if self.export_process.is_alive():
+                self.export_process.terminate()
+                self.export_process.join()
 
         # Prevent gtk errors when closing with everything selected
         self.iconview.unselect_all()
@@ -951,11 +1012,12 @@ class PdfArranger(Gtk.Application):
 
     def choose_export_pdf_name(self, mode):
         """Handles choosing a name for exporting """
+        title = _('Save As…') if mode == GLib.Variant('i', 0) else _('Export…')
 
-        chooser = Gtk.FileChooserDialog(title=_('Export…'),
+        chooser = Gtk.FileChooserDialog(title=title,
                                         parent=self.window,
                                         action=Gtk.FileChooserAction.SAVE,
-                                        buttons=(Gtk.STOCK_CANCEL,
+                                        buttons=("_Cancel",
                                                  Gtk.ResponseType.CANCEL,
                                                  Gtk.STOCK_SAVE,
                                                  Gtk.ResponseType.ACCEPT))
@@ -974,34 +1036,70 @@ class PdfArranger(Gtk.Application):
         file_out = chooser.get_filename()
         chooser.destroy()
         if response == Gtk.ResponseType.ACCEPT:
-            try:
-                self.save(mode, file_out)
-            except Exception as e:
-                traceback.print_exc()
-                self.error_message_dialog(e)
+            self.save(mode, file_out)
+        else:
+            self.post_action = None
 
-    def active_file_names(self):
-        """Returns the file names currently associated with pages in the model."""
-        r = set(row[1].split('\n')[0] for row in self.model)
-        r.discard("")
-        return r
+    def open_dialog(self, title):
+        chooser = Gtk.FileChooserDialog(title=title,
+                                        parent=self.window,
+                                        action=Gtk.FileChooserAction.OPEN,
+                                        buttons=("_Cancel",
+                                                 Gtk.ResponseType.CANCEL,
+                                                 "_Open",
+                                                 Gtk.ResponseType.ACCEPT))
+        if self.import_directory is not None:
+            chooser.set_current_folder(self.import_directory)
+        chooser.set_select_multiple(True)
+        file_type_list = ['all', 'pdf']
+        if len(img2pdf_supported_img) > 0:
+            file_type_list = ['all', 'img2pdf', 'pdf']
+        filter_list = self.__create_filters(file_type_list)
+        for f in filter_list:
+            chooser.add_filter(f)
 
-    def on_action_new(self, _action, _param, _unknown):
+        return chooser.run(), chooser
+
+    def on_action_new(self, _action=None, _param=None, _unknown=None, filenames=None):
         """Start a new instance."""
+        filenames = filenames or []
         if os.name == 'nt':
-            if sys.executable.find('python3.exe') == -1:
-                subprocess.Popen(sys.executable)
-            else:
-                subprocess.Popen([sys.executable, '-mpdfarranger'])
+            args = [str(sys.executable)]
+            for filename in filenames:
+                args.append(filename)
+            if sys.executable.find('python3.exe') != -1:
+                args.insert(1, '-mpdfarranger')
+            subprocess.Popen(args)
         else:
             display = Gdk.Display.get_default()
             launch_context = display.get_app_launch_context()
             desktop_file = "%s.desktop"%(self.get_application_id())
             try:
                 app_info = Gio.DesktopAppInfo.new(desktop_file)
-                app_info.launch([], launch_context)
+                launch_files = []
+                for filename in filenames:
+                    launch_file = Gio.File.new_for_path(filename)
+                    launch_files.append(launch_file)
+                app_info.launch(launch_files, launch_context)
             except TypeError:
-                subprocess.Popen([sys.executable, '-mpdfarranger'])
+                args = [str(sys.executable), '-mpdfarranger']
+                for filename in filenames:
+                    args.append(filename)
+                subprocess.Popen(args)
+
+    def on_action_open(self, _action, _param, _unknown):
+        """Open new file(s)."""
+        response, chooser = self.open_dialog(_('Open…'))
+
+        if response == Gtk.ResponseType.ACCEPT:
+            if self.is_unsaved or self.export_file:
+                self.on_action_new(filenames=chooser.get_filenames())
+            else:
+                adder = PageAdder(self)
+                for filename in chooser.get_filenames():
+                    adder.addpages(filename)
+                adder.commit(select_added=False, add_to_undomanager=True)
+        chooser.destroy()
 
     def on_action_save(self, _action, _param, _unknown):
         self.save_or_choose()
@@ -1010,20 +1108,16 @@ class PdfArranger(Gtk.Application):
         """Saves to the previously exported file or shows the export dialog if
         there was none."""
         savemode = GLib.Variant('i', 0) # Save all pages in a single document.
-        try:
-            if self.export_file:
-                self.save(savemode, self.export_file)
-            else:
-                self.choose_export_pdf_name(savemode)
-        except Exception as e:
-            self.error_message_dialog(e)
+        if self.export_file:
+            self.save(savemode, self.export_file)
+        else:
+            self.choose_export_pdf_name(savemode)
 
     def on_action_save_as(self, _action, _param, _unknown):
         self.choose_export_pdf_name(GLib.Variant('i', 0))
 
-    @warn_dialog
     def save(self, mode, file_out):
-        """Saves to the specified file.  May throw exceptions."""
+        """Saves to the specified file."""
         (path, shortname) = os.path.split(file_out)
         (shortname, ext) = os.path.splitext(shortname)
         if ext.lower() != '.pdf':
@@ -1036,23 +1130,99 @@ class PdfArranger(Gtk.Application):
         exportmode = exportmodes[mode.get_int32()]
 
         if exportmode in ['SELECTED_TO_SINGLE', 'SELECTED_TO_MULTIPLE']:
-            selection = self.iconview.get_selected_items()
-            to_export = [row[0] for row in self.model if row.path in selection]
+            selection = reversed(self.iconview.get_selected_items())
+            pages = [self.model[row][0].duplicate(incl_thumbnail=False) for row in selection]
         else:
             self.export_directory = path
             self.set_export_file(file_out)
-            to_export = [row[0] for row in self.model]
+            pages = [row[0].duplicate(incl_thumbnail=False) for row in self.model]
 
-        m = metadata.merge(self.metadata, self.pdfqueue)
         if self.config.content_loss_warning():
-            res, enabled = exporter.check_content(self.window, self.pdfqueue)
+            try:
+                res, enabled = exporter.check_content(self.window, self.pdfqueue)
+            except Exception as e:
+                traceback.print_exc()
+                self.error_message_dialog(e)
+                return
             self.config.set_content_loss_warning(enabled)
             if res == Gtk.ResponseType.CANCEL:
                 return # Abort
-        exporter.export(self.pdfqueue, to_export, file_out, mode, m)
 
-        if exportmode == 'ALL_TO_SINGLE':
+        files = [(pdf.copyname, pdf.password) for pdf in self.pdfqueue]
+        if not self.export_process:
+            multiprocessing.set_start_method('spawn')
+        self.quit_flag = multiprocessing.Event()
+        export_msg = multiprocessing.Queue()
+        a = files, pages, self.metadata, exportmode, file_out, self.quit_flag, export_msg
+        self.export_process = multiprocessing.Process(target=exporter.export_process, args=a)
+        self.export_process.start()
+        GObject.timeout_add(300, self.export_finished, exportmode, export_msg)
+        self.set_export_state(True)
+
+    def save_warning_dialog(self, msg):
+        d = Gtk.MessageDialog(
+            type=Gtk.MessageType.WARNING,
+            parent=self.window,
+            text=_("Saving produced some warnings"),
+            secondary_text=_("Despite the warnings the document(s) should have no visible issues."),
+            buttons=Gtk.ButtonsType.OK
+            )
+        sw = Gtk.ScrolledWindow(margin=6)
+        label = Gtk.Label(msg, wrap=True, margin=6, xalign=0.0, selectable=True)
+        sw.add(label)
+        d.vbox.pack_start(sw, False, False, 0)
+        cb = Gtk.CheckButton(_("Don't show warnings when saving again."), margin=6, can_focus=False)
+        d.vbox.pack_start(cb, False, False, 0)
+        d.show_all()
+        sw.set_min_content_height(min(150, label.get_allocated_height()))
+        cb.set_can_focus(True)
+        d.run()
+        self.config.set_show_save_warnings(not cb.get_active())
+        d.destroy()
+
+    def export_finished(self, exportmode, export_msg):
+        """Check if export finished. Show any messages. Run any post action."""
+        if self.export_process.is_alive():
+            return True
+        self.set_export_state(False)
+        msg_type = None
+        if not export_msg.empty():
+            msg, msg_type = export_msg.get()
+        if exportmode == 'ALL_TO_SINGLE' and msg_type != Gtk.MessageType.ERROR:
             self.set_unsaved(False)
+        if msg_type == Gtk.MessageType.ERROR:
+            self.error_message_dialog(msg)
+        elif msg_type == Gtk.MessageType.WARNING and self.config.show_save_warnings():
+            self.save_warning_dialog(msg)
+        if not self.is_unsaved:
+            if self.post_action == 'CLEAR_DATA':
+                self.clear_data()
+            elif self.post_action == 'CLOSE_APPLICATION':
+                self.close_application()
+        self.post_action = None
+
+    def set_export_state(self, enable):
+        """Enable/disable app export state.
+
+        When enabled app is moveable, resizable and closeable but does not respond to other input.
+        """
+        self.sw.set_sensitive(not enable)
+        self.main_menu.set_sensitive(not enable)
+        for a in self.actions:
+            self.window.lookup_action(a[0]).set_enabled(not enable)
+        ctxt_id = self.status_bar2.get_context_id("saving")
+        if enable:
+            self.status_bar2.push(ctxt_id, _('Saving…'))
+            cursor = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), 'wait')
+            self.quit_rendering()
+        else:
+            self.status_bar2.remove_all(ctxt_id)
+            cursor = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), 'default')
+            self.window_focus_in_out_event()
+            self.iv_selection_changed_event()
+            self.silent_render()
+            self.iconview.grab_focus()
+        self.iconview.get_window().set_cursor(cursor)
 
     def choose_export_selection_pdf_name(self, _action, mode, _unknown):
         self.choose_export_pdf_name(mode)
@@ -1060,25 +1230,10 @@ class PdfArranger(Gtk.Application):
     def on_action_export_all(self, _action, _param, _unknown):
         self.choose_export_pdf_name(GLib.Variant('i', 1))
 
-    def on_action_add_doc_activate(self, _action, _param, _unknown):
+    def on_action_import(self, _action, _param, _unknown):
         """Import doc"""
-        chooser = Gtk.FileChooserDialog(title=_('Import…'),
-                                        parent=self.window,
-                                        action=Gtk.FileChooserAction.OPEN,
-                                        buttons=(Gtk.STOCK_CANCEL,
-                                                 Gtk.ResponseType.CANCEL,
-                                                 Gtk.STOCK_OPEN,
-                                                 Gtk.ResponseType.ACCEPT))
-        chooser.set_current_folder(self.import_directory)
-        chooser.set_select_multiple(True)
-        file_type_list = ['all', 'pdf']
-        if len(img2pdf_supported_img) > 0:
-            file_type_list = ['all', 'img2pdf', 'pdf']
-        filter_list = self.__create_filters(file_type_list)
-        for f in filter_list:
-            chooser.add_filter(f)
+        response, chooser = self.open_dialog(_('Import…'))
 
-        response = chooser.run()
         if response == Gtk.ResponseType.ACCEPT:
             adder = PageAdder(self)
             for filename in chooser.get_filenames():
@@ -1105,9 +1260,11 @@ class PdfArranger(Gtk.Application):
                     row = model[-1]
                     path = row.path
                     self.iconview.select_path(path)
+        self.update_iconview_geometry()
         self.iv_selection_changed_event()
         self.iconview.grab_focus()
         self.silent_render()
+        self.update_max_zoom_level()
         malloc_trim()
 
     def copy_pages(self):
@@ -1159,9 +1316,9 @@ class PdfArranger(Gtk.Application):
                         npage > 0 and
                         angle in [0, 90, 180, 270] and
                         0 < scale <= 200.0 and
-                        all((cr >= 0.0 and cr <= 0.99) for cr in crop) and
-                        (crop[0] + crop[1] <= 0.99) and
-                        (crop[2] + crop[3] <= 0.99) and
+                        all((cr >= 0.0 and cr <= 0.90) for cr in crop) and
+                        (crop[0] + crop[1] <= 0.90) and
+                        (crop[2] + crop[3] <= 0.90) and
                         len(tmp) == 9):
                     data_valid = False
                     break
@@ -1256,8 +1413,6 @@ class PdfArranger(Gtk.Application):
                 self.paste_files(data, before, ref_to)
             else:
                 self.paste_pages(data, before, ref_to, select_added=False)
-            if pastemode == 'BEFORE':
-                self.__update_statusbar()
         elif pastemode in ['ODD', 'EVEN']:
             if data_is_filepaths:
                 # Generate data to send to paste_pages_interleave
@@ -1283,9 +1438,10 @@ class PdfArranger(Gtk.Application):
                     return
                 data = filepaths
             self.paste_pages_interleave(data, before, ref_to)
+            self.update_iconview_geometry()
             GObject.idle_add(self.retitle)
             self.iv_selection_changed_event()
-            self.zoom_set(self.zoom_level)
+            self.update_max_zoom_level()
             self.silent_render()
 
     def read_from_clipboard(self):
@@ -1493,11 +1649,14 @@ class PdfArranger(Gtk.Application):
             for ref_del in ref_del_list:
                 path = ref_del.get_path()
                 model.remove(model.get_iter(path))
+        self.update_iconview_geometry()
         GObject.idle_add(self.render)
         malloc_trim()
 
     def iv_dnd_motion(self, iconview, context, x, y, etime):
         """Handles drag motion: autoscroll, select move or copy, select drag cursor location."""
+        x, y = iconview.convert_widget_to_bin_window_coords(x, y)
+
         # Auto-scroll when drag up/down
         self.iv_autoscroll(x, y, autoscroll_area=40)
 
@@ -1553,17 +1712,12 @@ class PdfArranger(Gtk.Application):
     def iv_autoscroll(self, x, y, autoscroll_area):
         """Iconview auto-scrolling."""
         sw_vadj = self.sw.get_vadjustment()
-        sw_height = self.sw.get_allocation().height
-        if y - sw_vadj.get_value() < autoscroll_area - self.vp_css_margin:
+        if y < sw_vadj.get_value() + autoscroll_area:
             if not self.iv_auto_scroll_timer:
-                self.iv_auto_scroll_direction = Gtk.DirectionType.UP
-                self.iv_auto_scroll_timer = GObject.timeout_add(150,
-                                                                self.iv_auto_scroll)
-        elif y - sw_vadj.get_value() > sw_height - autoscroll_area - self.vp_css_margin:
+                self.iv_auto_scroll_timer = GObject.timeout_add(150, self.iv_auto_scroll, 'UP')
+        elif y > sw_vadj.get_page_size() + sw_vadj.get_value() - autoscroll_area:
             if not self.iv_auto_scroll_timer:
-                self.iv_auto_scroll_direction = Gtk.DirectionType.DOWN
-                self.iv_auto_scroll_timer = GObject.timeout_add(150,
-                                                                self.iv_auto_scroll)
+                self.iv_auto_scroll_timer = GObject.timeout_add(150, self.iv_auto_scroll, 'DOWN')
         elif self.iv_auto_scroll_timer:
             GObject.source_remove(self.iv_auto_scroll_timer)
             self.iv_auto_scroll_timer = None
@@ -1575,17 +1729,17 @@ class PdfArranger(Gtk.Application):
             GObject.source_remove(self.iv_auto_scroll_timer)
             self.iv_auto_scroll_timer = None
 
-    def iv_auto_scroll(self):
+    def iv_auto_scroll(self, direction):
         """Timeout routine for auto-scroll"""
-
         sw_vadj = self.sw.get_vadjustment()
-        sw_vpos = sw_vadj.get_value()
-        if self.iv_auto_scroll_direction == Gtk.DirectionType.UP:
-            sw_vpos -= sw_vadj.get_step_increment()
-            sw_vadj.set_value(max(sw_vpos, sw_vadj.get_lower()))
-        elif self.iv_auto_scroll_direction == Gtk.DirectionType.DOWN:
-            sw_vpos += sw_vadj.get_step_increment()
-            sw_vadj.set_value(min(sw_vpos, sw_vadj.get_upper() - sw_vadj.get_page_size()))
+        step = sw_vadj.get_step_increment()
+        step = -step if direction == "UP" else step
+        with GObject.signal_handler_block(self.iconview, self.id_selection_changed_event):
+            sw_vadj.set_value(sw_vadj.get_value() + step)
+            if not self.click_path:
+                changed = self.iv_drag_select.motion(rubberbanded=True, step=step)
+                if changed:
+                    self.iv_selection_changed_event()
         return True  # call me again
 
     def iv_motion(self, iconview, event):
@@ -1601,18 +1755,19 @@ class PdfArranger(Gtk.Application):
                 self.pressed_button = None
 
         # Drag-select when clicking between items and dragging mouse
-        if event.state & Gdk.ModifierType.BUTTON1_MASK:
+        if event.state & Gdk.ModifierType.BUTTON1_MASK and self.iv_drag_select.click_location:
             self.iv_autoscroll(event.x, event.y, autoscroll_area=4)
             if not self.click_path:
                 with GObject.signal_handler_block(iconview, self.id_selection_changed_event):
-                    selection_changed = self.iv_drag_select.motion(event)
-                if selection_changed:
+                    changed = self.iv_drag_select.motion(event)
+                if changed:
                     self.iv_selection_changed_event()
                 return True  # Don't use iconview's built-in rubberband-selecting
 
     def iv_button_release_event(self, iconview, event):
         """Manages mouse releases on the iconview"""
         self.iv_drag_select.set_mouse_cursor('default')
+        self.iv_drag_select.click_location = None
 
         if self.pressed_button:
             # Button was pressed and released on a previously selected item
@@ -1627,7 +1782,6 @@ class PdfArranger(Gtk.Application):
                 # Deselect everything except the clicked item.
                 iconview.unselect_all()
                 iconview.select_path(path)
-            iconview.set_cursor(path, None, False)  # for consistent shift+click selection
         self.pressed_button = None
 
         # Stop drag-select autoscrolling when button is released
@@ -1637,16 +1791,10 @@ class PdfArranger(Gtk.Application):
 
     def iv_button_press_event(self, iconview, event):
         """Manages mouse clicks on the iconview"""
-        # Toggle full page zoom / set zoom level on double-click
-        if event.button == 1 and event.type == Gdk.EventType._2BUTTON_PRESS:
+        # Switch between zoom_fit and zoom_set on double-click
+        if event.button == 1 and event.type == Gdk.EventType._2BUTTON_PRESS and self.click_path:
             self.pressed_button = None
-            if self.zoom_full_page:
-                self.zoom_set(self.zoom_level_old)
-            else:
-                self.zoom_level_old = self.zoom_level
-                self.zoom_to_full_page()
-                self.update_iconview_geometry()
-                self.scroll_to_selection()
+            self.on_action_zoom_fit()
             return True
 
         click_path_old = self.click_path
@@ -1654,8 +1802,8 @@ class PdfArranger(Gtk.Application):
 
         # Go into drag-select mode if clicked between items
         if event.button == 1 and not self.click_path:
-            self.iv_drag_select.click(event)
-            if event.state & Gdk.ModifierType.SHIFT_MASK:
+            location = self.iv_drag_select.click(event)
+            if event.state & Gdk.ModifierType.SHIFT_MASK or not location:
                 return 1
 
         # On shift-click, select all items from cursor up to the shift-clicked item.
@@ -1712,48 +1860,16 @@ class PdfArranger(Gtk.Application):
 
     def iv_key_press_event(self, iconview, event):
         """Manages keyboard press events on the iconview."""
-        # Toggle full page zoom / set zoom level on key f
-        if event.keyval == Gdk.KEY_f:
-            if self.zoom_full_page:
-                self.zoom_set(self.zoom_level_old)
-            else:
-                self.zoom_level_old = self.zoom_level
-                self.zoom_to_full_page()
-                self.update_iconview_geometry()
-                self.scroll_to_selection()
-
-        elif event.keyval in [Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Right,
-                            Gdk.KEY_Home, Gdk.KEY_End]:
+        if event.state & Gdk.ModifierType.BUTTON1_MASK:
+            return True
+        if event.keyval in [Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Right,
+                              Gdk.KEY_Home, Gdk.KEY_End, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down,
+                              Gdk.KEY_KP_Page_Up, Gdk.KEY_KP_Page_Down]:
             # Move cursor, select pages and scroll with navigation keys
             with GObject.signal_handler_block(iconview, self.id_selection_changed_event):
                 self.iv_cursor.handler(iconview, event)
             self.iv_selection_changed_event(None, move_cursor_event=True)
-
-        elif event.keyval in [Gdk.KEY_Page_Up, Gdk.KEY_Page_Down,
-                              Gdk.KEY_KP_Page_Up, Gdk.KEY_KP_Page_Down]:
-            # Scroll to next/previous page row
-            model = self.iconview.get_model()
-            sw_vadj = self.sw.get_vadjustment()
-            sw_vpos = sw_vadj.get_value()
-            columns_nr = self.iconview.get_columns()
-            path_last_page = Gtk.TreePath.new_from_indices([len(model) - 1])
-            last_cell_y = iconview.get_cell_rect(path_last_page)[1].y
-            sw_vpos_up = sw_vpos_down = page_nr = 0
-            extra = 0 if event.keyval in [Gdk.KEY_Page_Up, Gdk.KEY_KP_Page_Up] else 1
-            while sw_vpos_down < sw_vpos + extra:
-                path = Gtk.TreePath.new_from_indices([page_nr])
-                sw_vpos_up = sw_vpos_down
-                sw_vpos_down += iconview.get_cell_rect(path)[1].height + iconview.get_row_spacing()
-                page_nr += columns_nr
-            if event.keyval in [Gdk.KEY_Page_Up, Gdk.KEY_KP_Page_Up]:
-                sw_vadj.set_value(min(sw_vpos_up, last_cell_y + self.vp_css_margin - 6))
-            else:
-                sw_vadj.set_value(min(sw_vpos_down, last_cell_y + self.vp_css_margin - 6))
-
-        # Let Tab and Shift-Tab go through for keyboard navigation.
-        elif event.keyval in [Gdk.KEY_Tab, Gdk.KEY_KP_Tab, Gdk.KEY_ISO_Left_Tab]:
-            return False
-        return True
+            return True
 
     def iv_selection_changed_event(self, _iconview=None, move_cursor_event=False):
         selection = self.iconview.get_selected_items()
@@ -1775,17 +1891,17 @@ class PdfArranger(Gtk.Application):
             ("generate-booklet", ne),
         ]:
             self.window.lookup_action(a).set_enabled(e)
-        self.__update_statusbar()
+        self.update_statusbar()
         if selection and not move_cursor_event:
             self.iv_cursor.cursor_is_visible = False
 
     def window_focus_in_out_event(self, _widget=None, _event=None):
         """Keyboard focus enter or leave window."""
-        self.set_iconview_visible(timeout=False)
         # Enable or disable paste actions based on clipboard content
         data_available = True if self.clipboard.wait_for_text() else False
         if self.window.lookup_action("paste"):  # Prevent error when closing with Alt+F4
-            self.window.lookup_action("paste").set_enabled(data_available)
+            if self.sw.is_sensitive():
+                self.window.lookup_action("paste").set_enabled(data_available)
 
     def sw_dnd_received_data(self, _scrolledwindow, _context, _x, _y,
                              selection_data, target_id, _etime):
@@ -1819,45 +1935,65 @@ class PdfArranger(Gtk.Application):
 
     def sw_scroll_event(self, _scrolledwindow, event):
         """Manages mouse scroll events in scrolledwindow"""
-        if event.get_state() & Gdk.ModifierType.CONTROL_MASK:
-            zoom_delta = 0
-            if event.direction == Gdk.ScrollDirection.SMOOTH:
-                dy = event.get_scroll_deltas()[2]
-                if dy > 0:
-                    zoom_delta = -1
-                elif dy < 0:
-                    zoom_delta = 1
-            elif event.direction == Gdk.ScrollDirection.UP:
-                zoom_delta = 1
-            elif event.direction == Gdk.ScrollDirection.DOWN:
-                zoom_delta = -1
+        if event.direction == Gdk.ScrollDirection.SMOOTH:
+            dy = event.get_scroll_deltas()[2]
+            if dy < 0:
+                direction = 'UP'
+            elif dy > 0:
+                direction = 'DOWN'
+            else:
+                return
+        elif event.direction == Gdk.ScrollDirection.UP:
+            direction = 'UP'
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            direction = 'DOWN'
+        else:
+            return
+        if event.state & Gdk.ModifierType.CONTROL_MASK:
+            # Zoom
+            zoom_delta = 1 if direction == 'UP' else -1
+            self.zoom_set(self.zoom_level + zoom_delta)
+        else:
+            #Scroll. Also drag-select if mouse button is pressed
+            sw_vadj = self.sw.get_vadjustment()
+            step = sw_vadj.get_step_increment()
+            step = -step if direction == 'UP' else step
+            with GObject.signal_handler_block(self.iconview, self.id_selection_changed_event):
+                sw_vadj.set_value(sw_vadj.get_value() + step)
+                if event.state & Gdk.ModifierType.BUTTON1_MASK:
+                    changed = self.iv_drag_select.motion(event, rubberbanded=True, step=step)
+                    if changed:
+                        self.iv_selection_changed_event()
+        return True
 
-            if zoom_delta != 0:
-                self.zoom_set(self.zoom_level + zoom_delta)
-                return 1
+    def enable_zoom_buttons(self, out_enable, in_enable):
+        if self.window.lookup_action("zoom-out"):
+            self.window.lookup_action("zoom-out").set_enabled(out_enable)
+            self.window.lookup_action("zoom-in").set_enabled(in_enable)
+
+    def update_max_zoom_level(self):
+        """Update upper zoom level limit so thumbnails are max 6000000 pixels."""
+        if len(self.model) == 0:
+            return
+        max_pixels = 6000000  # 6000000 pixels * 4 byte/pixel -> 23Mb
+        max_page_size = max(p.size[0] * p.size[1] * p.scale ** 2 for p, _ in self.model)
+        max_zoom_scale = (max_pixels / max_page_size) ** .5
+        self.zoom_level_limits[1] = min(int(log(max_zoom_scale / .2) / log(1.1)), 40)
+        self.zoom_set(self.zoom_level)
 
     def zoom_set(self, level):
         """Sets the zoom level"""
-        level = min(max(level, -10), 40)
-        zoom_scale = 0.2 * (1.1 ** level)
-        # Limit max zoom level so that thumbnail is max 23Mb
-        if len(self.model) > 0:
-            max_limit = 6000000  # 6000000 pixels * 4 byte/pixel -> 23Mb
-            max_page_size = max(p.size[0] * p.size[1] * p.scale ** 2 for p, _ in self.model)
-            max_page_size_zoomed = max_page_size * zoom_scale ** 2
-            if max_page_size_zoomed > max_limit:
-                max_zoom_scale = (max_limit / max_page_size) ** .5
-                level = -10
-                while max_zoom_scale > 0.2 * (1.1 ** (level + 1)):
-                    level += 1
-                zoom_scale = 0.2 * (1.1 ** level)
+        lower, upper = self.zoom_level_limits
+        level = min(max(level, lower), upper)
+        self.enable_zoom_buttons(level != lower, level != upper)
         if self.zoom_level == level:
             return
+        self.vadj_percent_handler(store=True)
         self.zoom_level = level
-        self.zoom_scale = zoom_scale
+        self.zoom_scale = 0.2 * (1.1 ** level)
         if self.id_scroll_to_sel:
             GObject.source_remove(self.id_scroll_to_sel)
-        self.zoom_full_page = False
+        self.zoom_fit_page = False
         self.quit_rendering()  # For performance reasons
         for row in self.model:
             row[0].zoom = self.zoom_scale
@@ -1867,74 +2003,68 @@ class PdfArranger(Gtk.Application):
             self.id_scroll_to_sel = GObject.timeout_add(400, self.scroll_to_selection)
             self.silent_render()
 
-    def zoom_change(self, _action, step, _unknown):
-        """ Action handle for zoom change """
-        self.zoom_set(self.zoom_level + step.get_int32())
-
-    def zoom_to_full_page(self):
-        """Zoom selected thumbnail to full page."""
-        selection = self.iconview.get_selected_items()
-        if len(selection) != 1:
-            return
-
+    def zoom_fit(self, path):
+        """Zoom and scroll to path."""
         item_padding = self.iconview.get_item_padding()
         cell_image_renderer, cell_text_renderer = self.iconview.get_cells()
         image_padding = cell_image_renderer.get_padding()
-        text_rect = self.iconview.get_cell_rect(selection[-1], cell_text_renderer)[1]
+        text_rect = self.iconview.get_cell_rect(path, cell_text_renderer)[1]
         text_rect_height = text_rect.height  # cell_text_renderer padding is included here
         border_and_shadow = 7  # 2*th1+th2 set in iconview.py
         cell_extraX = 2 * (item_padding + image_padding[0]) + border_and_shadow
         cell_extraY = 2 * (item_padding + image_padding[1]) + text_rect_height + border_and_shadow
-
         sw_width = self.sw.get_allocated_width()
         sw_height = self.sw.get_allocated_height()
         page_width = max(p.width_in_points() for p, _ in self.model)
         page_height = max(p.height_in_points() for p, _ in self.model)
-        margins = 12  # leave 6 pixel at top and 6 pixel at bottom
+        margins = 12  # leave 6 pixel at left and 6 pixel at right
         zoom_scaleX_new = (sw_width - cell_extraX - margins) / page_width
-        zoom_scaleY_new = (sw_height - cell_extraY - margins) / page_height
-        self.zoom_scale = max(min(zoom_scaleY_new, zoom_scaleX_new), 0.2 * (1.1 ** -10))
-        self.quit_rendering()  # For performance reasons
+        zoom_scaleY_new = (sw_height - cell_extraY) / page_height
+        zoom_scale = min(zoom_scaleY_new, zoom_scaleX_new)
+
+        lower, upper = self.zoom_level_limits
+        self.zoom_level = min(max(int(log(zoom_scale / .2) / log(1.1)), lower), upper)
+        if self.zoom_level in [lower, upper]:
+            zoom_scale = 0.2 * (1.1 ** self.zoom_level)
+        self.zoom_scale = zoom_scale
+        self.enable_zoom_buttons(self.zoom_level != lower, self.zoom_level != upper)
         for page, _ in self.model:
             page.zoom = self.zoom_scale
         self.model[0][0] = self.model[0][0]
+        self.update_iconview_geometry()
+        self.iconview.scroll_to_path(path, True, 0.5, 0.5)
 
-        # Set zoom level to nearest possible so zoom in/out works right
-        self.zoom_level = -10
-        while self.zoom_scale > 0.2 * (1.1 ** self.zoom_level):
-            self.zoom_level += 1
-        self.zoom_full_page = True
+    def on_action_zoom_in(self, _action, _param, _unknown):
+        self.zoom_set(self.zoom_level + 5)
+
+    def on_action_zoom_out(self, _action, _param, _unknown):
+        self.zoom_set(self.zoom_level - 5)
+
+    def on_action_zoom_fit(self, _action=None, _param=None, _unknown=None):
+        """Switch between zoom_fit and zoom_set."""
+        if len(self.model) == 0:
+            return
+        if self.zoom_fit_page:
+            self.zoom_set(self.zoom_level_old)
+        else:
+            selection = self.iconview.get_selected_items()
+            if len(selection) > 0:
+                path = selection[-1]
+            else:
+                path = Gtk.TreePath.new_from_indices([self.get_visible_range2()[0]])
+                self.iconview.select_path(path)
+            self.iconview.set_cursor(path, None, False)
+            self.zoom_level_old = self.zoom_level
+            self.zoom_fit_page = True
+            self.zoom_fit(path)
 
     def scroll_to_selection(self):
         """Scroll iconview so that selection is in center of window."""
         self.id_scroll_to_sel = None
-        GObject.timeout_add(50, self._scroll_to_selection)
-
-    def _scroll_to_selection(self):
         selection = self.iconview.get_selected_items()
-        if not selection:
-            return
-        selection.sort(key=lambda x: x.get_indices()[0])
-        if self.zoom_full_page:
-            cell_image_renderer = self.iconview.get_cells()[0]
-            cell_rect = self.iconview.get_cell_rect(selection[-1], cell_image_renderer)
-            thmb_width, thmb_height = self.cellthmb.get_fixed_size()
-            if cell_rect[1].width != thmb_width or cell_rect[1].height != thmb_height:
-                # thmb_width and thmb_height is the wanted size. If cell_rect size is not
-                # yet equal, give it some time and then try again.
-                return True
-        sw_vadj = self.sw.get_vadjustment()
-        first_cell_y = self.iconview.get_cell_rect(selection[0])[1].y
-        last_cell_y = self.iconview.get_cell_rect(selection[-1])[1].y
-        last_cell_height = self.iconview.get_cell_rect(selection[-1])[1].height
-        selection_center = (last_cell_y + last_cell_height - first_cell_y) / 2 + 0.5
-        sw_height = self.sw.get_allocated_height()
-        new_value = first_cell_y + selection_center + self.vp_css_margin - sw_height / 2
-        if new_value > sw_vadj.get_upper():
-            # Scrollable not yet ready. Call function again.
-            return True
-        sw_vadj.set_value(new_value)
-        self.silent_render()
+        if len(selection) > 0:
+            path = selection[len(selection) // 2]
+            self.iconview.scroll_to_path(path, True, 0.5, 0.5)
 
     def rotate_page_action(self, _action, angle, _unknown):
         """Rotates the selected page in the IconView"""
@@ -1943,7 +2073,7 @@ class PdfArranger(Gtk.Application):
         selection = self.iconview.get_selected_items()
         if self.rotate_page(selection, angle):
             self.set_unsaved(True)
-            self.__update_statusbar()
+            self.update_statusbar()
 
     def rotate_page(self, selection, angle):
         model = self.iconview.get_model()
@@ -1956,7 +2086,7 @@ class PdfArranger(Gtk.Application):
             if p.rotate(angle):
                 rotated = True
                 model.set_value(treeiter, 0, p)
-            self.update_geometry(treeiter)
+        self.update_iconview_geometry()
         page_width_new = max(p.width_in_points() for p, _ in self.model)
         page_height_new = max(p.height_in_points() for p, _ in self.model)
         if page_width_old != page_width_new or page_height_old != page_height_new:
@@ -1985,10 +2115,13 @@ class PdfArranger(Gtk.Application):
                 for p in newpages:
                     model.insert_after(iterator, [p, p.description()])
                 model.set_value(iterator, 0, page)
+        self.update_iconview_geometry()
         self.iv_selection_changed_event()
+        GObject.idle_add(self.render)
 
     def edit_metadata(self, _action, _parameter, _unknown):
-        if metadata.edit(self.metadata, self.pdfqueue, self.window):
+        files = [(pdf.copyname, pdf.password) for pdf in self.pdfqueue]
+        if metadata.edit(self.metadata, files, self.window):
             self.set_unsaved(True)
 
     def page_format_dialog(self, _action, _parameter, _unknown):
@@ -2008,8 +2141,9 @@ class PdfArranger(Gtk.Application):
                     updatestatus = True
             if updatestatus:
                 self.set_unsaved(True)
-                self.__update_statusbar()
-        self.zoom_set(self.zoom_level)
+                self.update_statusbar()
+        self.update_iconview_geometry()
+        self.update_max_zoom_level()
         GObject.idle_add(self.render)
 
     def crop_white_borders(self, _action, _parameter, _unknown):
@@ -2018,7 +2152,7 @@ class PdfArranger(Gtk.Application):
         self.undomanager.commit("Crop white Borders")
         if self.crop(selection, crop):
             self.set_unsaved(True)
-            self.__update_statusbar()
+            self.update_statusbar()
         GObject.idle_add(self.render)
 
     def crop(self, selection, newcrop):
@@ -2031,7 +2165,7 @@ class PdfArranger(Gtk.Application):
                 page.crop = list(newcrop[id_sel])
                 changed = True
             model.set_value(pos, 0, page)
-            self.update_geometry(pos)
+        self.update_iconview_geometry()
         return changed
 
     def duplicate(self, _action, _parameter, _unknown):
@@ -2052,6 +2186,7 @@ class PdfArranger(Gtk.Application):
                 page = model.get_value(iterator, 0).duplicate()
                 model.insert_after(iterator, [page, page.description()])
         self.iv_selection_changed_event()
+        GObject.idle_add(self.render)
 
 
     @staticmethod
@@ -2099,11 +2234,23 @@ class PdfArranger(Gtk.Application):
         about_dialog.set_version(VERSION)
         pike = pikepdf.__version__
         qpdf = pikepdf.__libqpdf_version__
-        about_dialog.set_comments(''.join((_(
-            '%s is a tool for rearranging and modifying PDF files. '
-            'Developed using GTK+ and Python') % APPNAME,
-            '\n \n',
-            _('(%s uses libqpdf %s and pikepdf %s)') % (APPNAME, qpdf, pike))))
+        gtkv = "{}.{}.{}".format(
+            Gtk.get_major_version(), Gtk.get_minor_version(), Gtk.get_micro_version()
+        )
+        pyv = "{}.{}.{}".format(
+            sys.version_info.major, sys.version_info.minor, sys.version_info.micro
+        )
+        about_dialog.set_comments(
+            "".join(
+                (
+                    _("%s is a tool for rearranging and modifying PDF files. ")
+                    % APPNAME,
+                    "\n \n",
+                    _("It uses libqpdf %s, pikepdf %s, GTK %s and Python %s.")
+                    % (qpdf, pike, gtkv, pyv),
+                )
+            )
+        )
         about_dialog.set_authors(['Konstantinos Poulios'])
         about_dialog.add_credit_section(_('Maintainers and contributors'), [
             'https://github.com/pdfarranger/pdfarranger/graphs/contributors'])
@@ -2115,18 +2262,7 @@ class PdfArranger(Gtk.Application):
         about_dialog.connect('delete_event', lambda w, *args: w.destroy())
         about_dialog.show_all()
 
-    def reset_export_file(self, model, _path, _itr=None, _user_data=None):
-        if len(model) == 0:
-            self.set_export_file(None)
-            self.set_unsaved(False)
-
-    def __update_num_pages(self, model, _path=None, _itr=None, _user_data=None):
-        num_pages = len(model)
-        self.uiXML.get_object("num_pages").set_text(str(num_pages))
-        for a in ["save", "save-as", "select", "export-all"]:
-            self.window.lookup_action(a).set_enabled(num_pages > 0)
-
-    def __update_statusbar(self):
+    def update_statusbar(self):
         selection = self.iconview.get_selected_items()
         selected_pages = sorted([p.get_indices()[0] + 1 for p in selection])
         # Compact the representation of the selected page range
@@ -2138,17 +2274,21 @@ class PdfArranger(Gtk.Application):
             range_str = '{}-{}'.format(lo,hi) if lo < hi else '{}'.format(lo)
             display.append(range_str)
         ctxt_id = self.status_bar.get_context_id("selected_pages")
-        msg = _("Selected pages: ") + ", ".join(display)
+        num_pages = len(self.model)
+        msg = _("Selected pages: ") + ", ".join(display) + " / " + str(num_pages)
         if len(selection) == 1:
             model = self.iconview.get_model()
             pagesize = model[selection[0]][0].size_in_points()
             pagesize = [x * 25.4 / 72 for x in pagesize]
-            msg += " / "+_("Page Size:")+ " {:.1f}mm \u00D7 {:.1f}mm".format(*pagesize)
+            msg += " | "+_("Page Size:")+ " {:.1f}mm \u00D7 {:.1f}mm".format(*pagesize)
         self.status_bar.push(ctxt_id, msg)
 
-    def error_message_dialog(self, msg, msg_type=Gtk.MessageType.ERROR):
+        for a in ["save", "save-as", "select", "export-all", "zoom-fit"]:
+            self.window.lookup_action(a).set_enabled(num_pages > 0)
+
+    def error_message_dialog(self, msg):
         error_msg_dlg = Gtk.MessageDialog(flags=Gtk.DialogFlags.MODAL,
-                                          type=msg_type, parent=self.window,
+                                          type=Gtk.MessageType.ERROR, parent=self.window,
                                           message_format=str(msg),
                                           buttons=Gtk.ButtonsType.OK)
         response = error_msg_dlg.run()

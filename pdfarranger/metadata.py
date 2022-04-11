@@ -23,6 +23,8 @@ import json
 import traceback
 from datetime import datetime
 from dateutil import parser
+import gi
+gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 _ = gettext.gettext
 
@@ -75,14 +77,25 @@ def load_from_docinfo(meta, doc):
         traceback.print_exc()
 
 
+def _safeiter(elements):
+    it = iter(elements)
+    while True:
+        try:
+            yield next(it)
+        except StopIteration:
+            break
+        except ValueError:
+            traceback.print_exc()
+
+
 def merge(metadata, input_files):
     """ Merge current global metadata and each imported files meta data """
     r = metadata.copy()
-    for p in input_files:
-        doc = pikepdf.open(p.copyname, password=p.password)
+    for copyname, password in input_files:
+        doc = pikepdf.open(copyname, password=password)
         with doc.open_metadata() as meta:
             load_from_docinfo(meta, doc)
-            for k, v in meta.items():
+            for k, v in _safeiter(meta.items()):
                 if not _pikepdf_meta_is_valid(v):
                     # workaround for https://github.com/pikepdf/pikepdf/issues/84
                     del meta[k]
@@ -180,8 +193,8 @@ def edit(metadata, pdffiles, parent):
     dialog = Gtk.Dialog(title=_('Edit properties'),
                         parent=parent,
                         flags=Gtk.DialogFlags.MODAL,
-                        buttons=(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-                                 Gtk.STOCK_OK, Gtk.ResponseType.OK))
+                        buttons=("_Cancel", Gtk.ResponseType.CANCEL,
+                                 "_OK", Gtk.ResponseType.OK))
     ok_button = dialog.get_widget_for_response(response_id = Gtk.ResponseType.OK)
     ok_button.grab_focus()
     # Property, Value, XMP name (hidden)

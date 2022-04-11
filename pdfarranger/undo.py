@@ -40,6 +40,11 @@ class Manager(object):
         self.undoaction = None
         self.redoaction = None
 
+    def clear(self):
+        self.states = []
+        self.label = None
+        self.current = 0
+
     def commit(self, label):
         """
         Must be called *BEFORE* each undoable actions
@@ -72,14 +77,17 @@ class Manager(object):
 
     def __set_state(self, state):
         self.app.quit_rendering()
+        self.app.iconview.unselect_all()
         with self.app.render_lock():
             self.model.clear()
             for page in state:
                 # Do not reset the zoom level
                 page.zoom = self.app.zoom_scale
                 self.model.append([page, page.description()])
-        self.app.zoom_set(self.app.zoom_level)
+        self.app.update_iconview_geometry()
+        self.app.update_max_zoom_level()
         self.app.retitle()
+        self.app.update_statusbar()
         self.app.silent_render()
 
     def __refresh(self):

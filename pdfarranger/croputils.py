@@ -68,16 +68,17 @@ class _LinkedSpinButton(Gtk.SpinButton):
         return True
 
 
-class _RadioStackSwitcher(Gtk.VBox):
+class _RadioStackSwitcher(Gtk.Box):
     """ Same as GtkStackSwitcher but with radio button (i.e different semantic) """
 
     def __init__(self, margin=10):
         super().__init__()
+        self.props.orientation = Gtk.Orientation.VERTICAL
         self.set_spacing(margin)
         self.props.margin = margin
         self.radiogroup = []
         self.stack = Gtk.Stack()
-        self.button_box = Gtk.HBox()
+        self.button_box = Gtk.Box()
         self.button_box.set_spacing(margin)
         self.add(self.button_box)
         self.add(self.stack)
@@ -105,7 +106,7 @@ class _RadioStackSwitcher(Gtk.VBox):
             self.selected_child = self.stack.get_child_by_name(name)
 
 
-class _RelativeScalingWidget(Gtk.HBox):
+class _RelativeScalingWidget(Gtk.Box):
     """ A form to specify the relative scaling factor """
 
     def __init__(self, current_scale, margin=10):
@@ -124,7 +125,7 @@ class _RelativeScalingWidget(Gtk.HBox):
         return self.entry.get_value() / 100
 
 
-class _ScalingWidget(Gtk.HBox):
+class _ScalingWidget(Gtk.Box):
     """ A form to specify the page width or height """
 
     def __init__(self, label, default):
@@ -178,7 +179,7 @@ class _CropWidget(Gtk.Frame):
             adj = Gtk.Adjustment(
                 value=100.0 * crop.pop(0),
                 lower=0.0,
-                upper=99.0,
+                upper=90.0,
                 step_increment=1.0,
                 page_increment=5.0,
                 page_size=0.0,
@@ -197,7 +198,7 @@ class _CropWidget(Gtk.Frame):
     def __set_crop_value(spinbutton, self, side):
         opp_side = self.opposite_sides[side]
         adj = self.spin_list[self.sides.index(opp_side)].get_adjustment()
-        limit = 99.0 - spinbutton.get_value()
+        limit = 90.0 - spinbutton.get_value()
         adj.set_upper(limit)
         opp_spinner = self.spin_list[self.sides.index(opp_side)]
         opp_spinner.set_value(min(opp_spinner.get_value(), limit))
@@ -215,9 +216,9 @@ class Dialog(Gtk.Dialog):
             parent=window,
             flags=Gtk.DialogFlags.MODAL,
             buttons=(
-                Gtk.STOCK_CANCEL,
+                "_Cancel",
                 Gtk.ResponseType.CANCEL,
-                Gtk.STOCK_OK,
+                "_OK",
                 Gtk.ResponseType.OK,
             ),
         )
@@ -282,55 +283,32 @@ def white_borders(model, selection, pdfqueue):
         cr = cairo.Context(thumbnail)
         with pdfdoc.render_lock:
             page.render(cr)
-        # TODO: python list are dead slow compared to memoryview. It would
-        # be faster to create a memoryview full of 0 and then compare each row
-        # to it. memoryview have full native __eq__ operator which is fast.
-        data = thumbnail.get_data().cast("i", shape=[h, w]).tolist()
-
+        data = thumbnail.get_data().cast("i")
+        whitecol = memoryview(b"\0" * h * 4).cast("i")
+        whiterow = memoryview(b"\0" * w * 4).cast("i")
         crop_this_page = [0.0, 0.0, 0.0, 0.0]
-        # TODO: Those 4 copy/paste should be factorized
         # Left
-        allwhite = True
         for col in range(first_col, last_col):
-            for row in range(first_row, last_row):
-                if data[row][col] != 0:
-                    allwhite = False
-                    crop_this_page[0] = (col) / w
-                    break
-            if not allwhite:
+            if data[col::w] != whitecol:
+                crop_this_page[0] = col / w
                 break
 
         # Right
-        allwhite = True
         for col in range(last_col - 1, first_col - 1, -1):
-            for row in range(first_row, last_row):
-                if data[row][col] != 0:
-                    allwhite = False
-                    crop_this_page[1] = (w - col) / w
-                    break
-            if not allwhite:
+            if data[col::w] != whitecol:
+                crop_this_page[1] = (w - col) / w
                 break
 
         # Top
-        allwhite = True
         for row in range(first_row, last_row):
-            for col in range(first_col, last_col):
-                if data[row][col] != 0:
-                    allwhite = False
-                    crop_this_page[2] = (row) / h
-                    break
-            if not allwhite:
+            if data[row * w : (row + 1) * w] != whiterow:
+                crop_this_page[2] = (row) / h
                 break
 
         # Bottom
-        allwhite = True
         for row in range(last_row - 1, first_row - 1, -1):
-            for col in range(first_col, last_col):
-                if data[row][col] != 0:
-                    allwhite = False
-                    crop_this_page[3] = (h - row) / h
-                    break
-            if not allwhite:
+            if data[row * w : (row + 1) * w] != whiterow:
+                crop_this_page[3] = (h - row) / h
                 break
 
         crop.append(p.rotate_crop(crop_this_page, p.rotate_times(p.angle)))
@@ -344,9 +322,9 @@ class BlankPageDialog(Gtk.Dialog):
             parent=window,
             flags=Gtk.DialogFlags.MODAL,
             buttons=(
-                Gtk.STOCK_CANCEL,
+                "_Cancel",
                 Gtk.ResponseType.CANCEL,
-                Gtk.STOCK_OK,
+                "_OK",
                 Gtk.ResponseType.OK,
             ),
         )

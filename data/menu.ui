@@ -21,6 +21,12 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
   <menu id="main_menu">
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Open</attribute>
+        <attribute name="action">win.open</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label" translatable="yes">_Import</attribute>
         <attribute name="action">win.import</attribute>
       </item>
@@ -191,18 +197,23 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
         </item>
       </section>
     </submenu>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">Zoom _In</attribute>
-        <attribute name="action">win.zoom</attribute>
-        <attribute name="target" type="i">5</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Zoom _Out</attribute>
-        <attribute name="action">win.zoom</attribute>
-        <attribute name="target" type="i">-5</attribute>
-      </item>
-    </section>
+    <submenu>
+      <attribute name="label" translatable="yes">_Zoom</attribute>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">Zoom _In</attribute>
+          <attribute name="action">win.zoom-in</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Zoom _Out</attribute>
+          <attribute name="action">win.zoom-out</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Zoom _Fit</attribute>
+          <attribute name="action">win.zoom-fit</attribute>
+        </item>
+      </section>
+    </submenu>
     <section>
       <item>
         <attribute name="label" translatable="yes">Edit _Properties</attribute>
@@ -213,6 +224,12 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
       <item>
         <attribute name="label" translatable="yes">_About</attribute>
         <attribute name="action">win.about</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Close</attribute>
+        <attribute name="action">win.close</attribute>
       </item>
     </section>
     <section>

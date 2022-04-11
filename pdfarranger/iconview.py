@@ -124,7 +124,8 @@ class IconviewCursor(object):
         self.event = event
         self.set_initial()
         self.set_selection_start_page()
-        self.move()
+        if self.move_cursor:
+            self.move()
         self.select()
         self.scroll_iconview()
 
@@ -160,32 +161,50 @@ class IconviewCursor(object):
 
     def move(self):
         """Move iconview cursor with navigation keys."""
+        cursor_path = self.iconview.get_cursor()[1]
+        self.cursor_page_nr = Gtk.TreePath.get_indices(cursor_path)[0]
+        cursor_y = self.iconview.get_cell_rect(cursor_path)[1].y
+        page_size = self.app.sw.get_vadjustment().get_page_size()
+        spacing = self.iconview.get_row_spacing()
         columns_nr = self.iconview.get_columns()
-        if self.move_cursor:
-            cursor_path = self.iconview.get_cursor()[1]
-            self.cursor_page_nr = Gtk.TreePath.get_indices(cursor_path)[0]
-            if self.event.keyval == Gdk.KEY_Up:
-                step = 0 if self.cursor_page_nr - columns_nr < 0 else columns_nr
-                self.cursor_page_nr_new = self.cursor_page_nr - step
-            elif self.event.keyval == Gdk.KEY_Down:
-                step = 0 if self.cursor_page_nr + columns_nr > len(self.model) - 1 else columns_nr
-                self.cursor_page_nr_new = self.cursor_page_nr + step
-            elif self.event.keyval == Gdk.KEY_Left:
-                self.cursor_page_nr_new = max(self.cursor_page_nr - 1, 0)
-            elif self.event.keyval == Gdk.KEY_Right:
-                self.cursor_page_nr_new = min(self.cursor_page_nr + 1, len(self.model) - 1)
-            elif self.event.keyval == Gdk.KEY_Home:
-                self.cursor_page_nr_new = 0
-            elif self.event.keyval == Gdk.KEY_End:
-                self.cursor_page_nr_new = len(self.model) - 1
-            cursor_path = Gtk.TreePath.new_from_indices([self.cursor_page_nr])
-            self.iconview.unselect_path(cursor_path)
-            if not self.cursor_is_visible:
-                self.iconview.emit('move-cursor', Gtk.MovementStep.DISPLAY_LINES, 0)
-                self.cursor_is_visible = True
-                self.iconview.unselect_all()
-            cursor_path_new = Gtk.TreePath.new_from_indices([self.cursor_page_nr_new])
-            self.iconview.set_cursor(cursor_path_new, None, False)
+        if self.event.keyval == Gdk.KEY_Up:
+            step = 0 if self.cursor_page_nr - columns_nr < 0 else columns_nr
+            self.cursor_page_nr_new = self.cursor_page_nr - step
+        elif self.event.keyval == Gdk.KEY_Down:
+            step = 0 if self.cursor_page_nr + columns_nr > len(self.model) - 1 else columns_nr
+            self.cursor_page_nr_new = self.cursor_page_nr + step
+        elif self.event.keyval == Gdk.KEY_Left:
+            self.cursor_page_nr_new = max(self.cursor_page_nr - 1, 0)
+        elif self.event.keyval == Gdk.KEY_Right:
+            self.cursor_page_nr_new = min(self.cursor_page_nr + 1, len(self.model) - 1)
+        elif self.event.keyval == Gdk.KEY_Home:
+            self.cursor_page_nr_new = 0
+        elif self.event.keyval == Gdk.KEY_End:
+            self.cursor_page_nr_new = len(self.model) - 1
+        elif self.event.keyval in [Gdk.KEY_Page_Up, Gdk.KEY_KP_Page_Up]:
+            for self.cursor_page_nr_new in range(self.cursor_page_nr, -1, -columns_nr):
+                new_path = Gtk.TreePath.new_from_indices([self.cursor_page_nr_new])
+                new_y = self.iconview.get_cell_rect(new_path)[1].y
+                if new_y < cursor_y - page_size - spacing:
+                    self.cursor_page_nr_new += columns_nr
+                    break
+        elif self.event.keyval in [Gdk.KEY_Page_Down, Gdk.KEY_KP_Page_Down]:
+            for self.cursor_page_nr_new in range(self.cursor_page_nr, len(self.model), columns_nr):
+                new_path = Gtk.TreePath.new_from_indices([self.cursor_page_nr_new])
+                new_y = self.iconview.get_cell_rect(new_path)[1].y
+                if new_y > cursor_y + page_size + spacing:
+                    self.cursor_page_nr_new -= columns_nr
+                    break
+        self.iconview.unselect_path(cursor_path)
+        if len(self.model) > 1 and not self.cursor_is_visible:
+            step = 1 if self.iconview.get_item_column(cursor_path) == 0 else -1
+            self.iconview.emit('move-cursor', Gtk.MovementStep.VISUAL_POSITIONS, step)
+            self.cursor_is_visible = True
+            self.iconview.unselect_all()
+        cursor_path_new = Gtk.TreePath.new_from_indices([self.cursor_page_nr_new])
+        sw_hpos = self.app.sw.get_hadjustment().get_value()
+        self.iconview.set_cursor(cursor_path_new, None, False)
+        self.app.sw.get_hadjustment().set_value(sw_hpos)
 
     def select(self):
         """Select iconview pages with shift + navigation keys."""
@@ -217,11 +236,19 @@ class IconviewCursor(object):
         sw_vadj = self.app.sw.get_vadjustment()
         sw_vpos = sw_vadj.get_value()
         cursor_path_new = Gtk.TreePath.new_from_indices([self.cursor_page_nr_new])
-        cell_height = self.iconview.get_cell_rect(cursor_path_new)[1].height
-        cell_y = self.iconview.get_cell_rect(cursor_path_new)[1].y
+        cell_rect = self.iconview.get_cell_rect(cursor_path_new)[1]
+        cell_height = cell_rect.height
+        cell_y = self.iconview.convert_widget_to_bin_window_coords(cell_rect.x, cell_rect.y)[1]
         sw_height = self.app.sw.get_allocated_height()
-        sw_vpos = min(sw_vpos, cell_y + self.app.vp_css_margin - 6)
-        sw_vpos = max(sw_vpos, cell_y + self.app.vp_css_margin + 6 - sw_height + cell_height)
+        columns_nr = self.iconview.get_columns()
+        up = self.cursor_page_nr_new < self.cursor_page_nr
+        at_min = self.cursor_page_nr_new - columns_nr < 0
+        down = self.cursor_page_nr_new > self.cursor_page_nr
+        at_max = self.cursor_page_nr_new + columns_nr > len(self.model) - 1
+        if up or at_min:
+            sw_vpos = min(max(sw_vpos, cell_y + cell_height - sw_height), cell_y)
+        elif down or at_max:
+            sw_vpos = max(min(sw_vpos, cell_y), cell_y + cell_height - sw_height)
         sw_vadj.set_value(sw_vpos)
 
 
@@ -245,9 +272,10 @@ class IconviewDragSelect:
     def click(self, event):
         """Store the click location."""
         if len(self.model) == 0:
+            self.click_location = None
             return
-        self.last_cell = self.iconview.get_cell_rect(self.model[-1].path)[1]
-        self.click_location = self.get_location(event)
+        self.selection_state = {}
+        self.click_location = self.get_location(event.x, event.y)
         if self.click_location:
             self.set_mouse_cursor('text')
             self.range_start = int(self.click_location + 0.5)
@@ -258,18 +286,29 @@ class IconviewDragSelect:
                 self.selection_list = []
                 for row in self.model:
                     self.selection_list.append(self.iconview.path_is_selected(row.path))
+            return True
 
-    def motion(self, event):
+    def motion(self, event=None, rubberbanded=False, step=0):
         """Get drag location and select or deselect items."""
         if not self.click_location:
             return
-        drag_location = self.get_location(event)
+        sw_vadj = self.app.sw.get_vadjustment()
+        sw_vpos = sw_vadj.get_value()
+        if event:
+            self.event_x = event.x
+            event_y = self.event_y = event.y + step
+            self.sw_vpos = sw_vpos
+            if not event.state & Gdk.ModifierType.CONTROL_MASK:
+                self.control_is_pressed = False
+            if not event.state & Gdk.ModifierType.SHIFT_MASK:
+                self.shift_is_pressed = False
+        else:
+            event_y = self.event_y - self.sw_vpos + sw_vpos + step
+        drag_location = self.get_location(self.event_x, event_y)
+        if rubberbanded:
+            self.restore_selection_state()
         if drag_location is None:
             return
-        if not event.state & Gdk.ModifierType.CONTROL_MASK:
-            self.control_is_pressed = False
-        if not event.state & Gdk.ModifierType.SHIFT_MASK:
-            self.shift_is_pressed = False
         selection_changed = self.select(drag_location)
         return selection_changed
 
@@ -310,30 +349,79 @@ class IconviewDragSelect:
                     self.iconview.select_path(path)
                 else:
                     self.iconview.unselect_path(path)
+        self.store_selection_state(changed_range_start, changed_range_end)
         return True
 
-    def get_location(self, event):
+    def store_selection_state(self, changed_range_start, changed_range_end):
+        """Store the selection state.
+
+        Iconview will do its built in rubberband selecting when scrolling.
+        The selection can be undone by storing the selection state before
+        rubberbanding and restoring the state when rubberbanding is done.
+        """
+        columns_nr = self.iconview.get_columns()
+        store_range_start = max(0, changed_range_start - columns_nr)
+        store_range_end = min(len(self.model), changed_range_end + columns_nr)
+        self.selection_state = {}
+        for page_nr in range(store_range_start, store_range_end):
+            path = Gtk.TreePath.new_from_indices([page_nr])
+            self.selection_state[page_nr] = True if self.iconview.path_is_selected(path) else False
+
+    def restore_selection_state(self):
+        """Restore the selection state."""
+        for page_nr, selected in self.selection_state.items():
+            path = Gtk.TreePath.new_from_indices([page_nr])
+            if selected == True:
+                self.iconview.select_path(path)
+            elif selected == False:
+                self.iconview.unselect_path(path)
+
+    def get_location(self, x, y):
         """
         Get mouse pointer location.
 
         E.g. Location is 2.0 when pointer is on item 2.
              Location is 2.5 when pointer is between item 2 and 3.
         """
-        location = None
-        search_positions = [(event.x, event.y, 0),
-                            (event.x + self.last_cell.width / 2, event.y, -0.5),
-                            (event.x - self.last_cell.width / 2, event.y, 0.5)]
-        for x_s, y_s, offset in search_positions:
+        last = self.iconview.get_cell_rect(self.model[-1].path)[1]
+        if last.width < 50:
+            # Avoid seg fault if calling get_path_at_pos before iconview is ready
+            return None
+        last_x, last_y = self.iconview.convert_widget_to_bin_window_coords(last.x, last.y)
+        x_step = last.width - 2 * self.iconview.get_item_padding() - 1
+        y_step = self.iconview.get_row_spacing() + 2 * self.iconview.get_item_padding() + 1
+        search_pos = [('XY', x, y),
+                      ('Right', x + x_step, y),
+                      ('Left', x - x_step, y),
+                      ('Below', x, y + y_step),
+                      ('Below', x + x_step, y + y_step),
+                      ('Below', x - x_step, y + y_step),
+                      ('Above', x, y - y_step),
+                      ('Above', x + x_step, y - y_step),
+                      ('Above', x - x_step, y - y_step),
+                      ('Zero', 0, 0)]
+        for pos, x_s, y_s in search_pos:
             path = self.iconview.get_path_at_pos(x_s, y_s)
             if path:
-                location = Gtk.TreePath.get_indices(path)[0] + offset
-                return location
-        if (event.y > self.last_cell.y + self.last_cell.height) or (
-            event.y > self.last_cell.y and event.x > self.last_cell.x + self.last_cell.width):
+                ind = Gtk.TreePath.get_indices(path)[0]
+                break
+        if pos == 'XY':
+            location = ind
+        elif pos == 'Right':
+            location = ind - 0.5
+        elif pos == 'Left':
+            location = ind + 0.5
+        elif pos == 'Below':
+            location = ind - self.iconview.get_item_column(path) - 0.5
+        elif pos == 'Above':
+            location = ind + self.iconview.get_columns() - self.iconview.get_item_column(path) - 0.5
+        elif (y > last_y + last.height) or (y > last_y and x > last_x + last.width):
             location = len(self.model) - 0.5
-        elif event.y < self.app.vp_css_margin * -1:
+        elif y < 0:
             location = -0.5
-        return location
+        else:
+            return None
+        return min(location, len(self.model) - 0.5)
 
     def set_mouse_cursor(self, cursor_name):
         """Set the cursor type specified by cursor_name."""

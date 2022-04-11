@@ -27,9 +27,9 @@ class Dialog(Gtk.Dialog):
             parent=window,
             flags=Gtk.DialogFlags.MODAL,
             buttons=(
-                Gtk.STOCK_CANCEL,
+                "_Cancel",
                 Gtk.ResponseType.CANCEL,
-                Gtk.STOCK_OK,
+                "_OK",
                 Gtk.ResponseType.OK,
             ),
         )
@@ -69,7 +69,7 @@ class Dialog(Gtk.Dialog):
         label.props.margin = 8
         label.props.margin_bottom = 6
         grid.attach(label, 0, 0, width=1, height=1)
-        adjustment = Gtk.Adjustment(value=self.split_count[direction], lower=1, upper=20, step_incr=1)
+        adjustment = Gtk.Adjustment(value=self.split_count[direction], lower=1, upper=10, step_incr=1)
         self.spinbuttons[direction].set_adjustment(adjustment)
         self.spinbuttons[direction].connect("value-changed", self._update_split, direction)
         grid.attach(self.spinbuttons[direction], 1, 0, width=1, height=1)

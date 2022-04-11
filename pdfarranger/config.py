@@ -17,6 +17,7 @@
 import platform
 import configparser
 import os
+import sys
 from gi.repository import Gdk
 
 # See https://gitlab.gnome.org/GNOME/gtk/-/blob/3.24.23/gdk/keynames.txt for list of keys
@@ -29,11 +30,14 @@ _DEFAULT_ACCELS = [
     ('save-as', '<Primary><Shift>s'),
     ('export-selection(2)', '<Primary>e'),
     ('export-all', '<Primary><Shift>e'),
+    ('close', '<Primary>w'),
     ('quit', '<Primary>q'),
     ('new', '<Primary>n'),
-    ('import', '<Primary>o'),
-    ('zoom(5)', 'plus KP_Add <Primary>plus <Primary>KP_Add'),
-    ('zoom(-5)', 'minus KP_Subtract <Primary>minus <Primary>KP_Subtract'),
+    ('open', '<Primary>o'),
+    ('import', '<Primary>i'),
+    ('zoom-in', 'plus KP_Add <Primary>plus <Primary>KP_Add'),
+    ('zoom-out', 'minus KP_Subtract <Primary>minus <Primary>KP_Subtract'),
+    ('zoom-fit', 'f'),
     ('undo', '<Primary>z'),
     ('redo', '<Primary>y'),
     ('cut', '<Primary>x'),
@@ -72,6 +76,11 @@ class Config(object):
     @staticmethod
     def _config_file(domain):
         """Return the location of the configuration file"""
+        if os.name == 'nt' and getattr(sys, 'frozen', False):
+            p = os.path.dirname(sys.executable)
+            config_ini = os.path.join(p, 'config.ini')
+            if os.path.isfile(config_ini):
+                return config_ini
         home = os.path.expanduser("~")
         if platform.system() == 'Darwin':
             p = os.path.join(home, 'Library', 'Preferences')
@@ -135,6 +144,12 @@ class Config(object):
 
     def set_content_loss_warning(self, enabled):
         self.data.set('preferences', 'content-loss-warning', str(enabled))
+
+    def show_save_warnings(self):
+        return self.data.getboolean('preferences', 'show-save-warnings', fallback=True)
+
+    def set_show_save_warnings(self, enabled):
+        self.data.set('preferences', 'show-save-warnings', str(enabled))
 
     def save(self):
         conffile = Config._config_file(self.domain)

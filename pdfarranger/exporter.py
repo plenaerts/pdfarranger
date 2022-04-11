@@ -17,6 +17,9 @@
 
 import pikepdf
 import os
+import traceback
+import sys
+import warnings
 import tempfile
 from . import metadata
 from gi.repository import Gtk
@@ -91,7 +94,6 @@ def _scale(doc, page, factor):
         # unset it on the input page before
         rotate = page.Rotate
         page.Rotate = 0
-    page = doc.make_indirect(page)
     page_id = len(doc.pages)
     newmediabox = [factor * float(x) for x in page.MediaBox]
     content = "q {} 0 0 {} 0 0 cm /p{} Do Q".format(factor, factor, page_id)
@@ -103,9 +105,11 @@ def _scale(doc, page, factor):
         Resources={'/XObject': {'/p{}'.format(page_id): xobject}},
         Rotate=rotate,
     )
-    # workaround for pikepdf <= 2.6.0. See https://github.com/pikepdf/pikepdf/issues/174
-    if pikepdf.__version__ < '2.7.0':
-        new_page = doc.make_indirect(new_page)
+    # This was needed for pikepdf <= 2.6.0. See https://github.com/pikepdf/pikepdf/issues/174
+    # It's also needed with pikepdf 4.2 else we get:
+    # RuntimeError: QPDFPageObjectHelper::getFormXObjectForPage called with a direct object
+    # when calling as_form_xobject in generate_booklet
+    new_page = doc.make_indirect(new_page)
     return new_page
 
 def check_content(parent, pdf_list):
@@ -122,8 +126,8 @@ def check_content(parent, pdf_list):
         d = Gtk.Dialog(_('Warning'),
                        parent=parent,
                        flags=Gtk.DialogFlags.MODAL,
-                       buttons=(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-                                Gtk.STOCK_OK, Gtk.ResponseType.OK))
+                       buttons=("_Cancel", Gtk.ResponseType.CANCEL,
+                                "_OK", Gtk.ResponseType.OK))
         label = Gtk.Label(_('Forms and outlines are lost on saving.'))
         d.vbox.pack_start(label, False, False, 6)
         checkbutton = Gtk.CheckButton(_('Do not show this dialog again.'))
@@ -146,19 +150,63 @@ def _update_angle(model_page, source_page, output_page):
         output_page.Rotate = angle + angle0
 
 
-def export(input_files, pages, file_out, mode, mdata):
-    exportmodes = {0: 'ALL_TO_SINGLE',
-                   1: 'ALL_TO_MULTIPLE',
-                   2: 'SELECTED_TO_SINGLE',
-                   3: 'SELECTED_TO_MULTIPLE'}
-    exportmode = exportmodes[mode.get_int32()]
+def _apply_geom_transform(pdf_output, new_page, row):
+    _update_angle(row, new_page, new_page)
+    new_page.MediaBox = _mediabox(new_page, row.crop)
+    return _scale(pdf_output, new_page, row.scale)
 
+
+def _remove_unreferenced_resources(pdfdoc):
+    try:
+        pdfdoc.remove_unreferenced_resources()
+    except RuntimeError:
+	# Catch "RuntimeError: operation for dictionary attempted on object of
+	# type null" with old version PikePDF (observed with 1.17 and 1.19).
+	# Blindly catch all RuntimeError is dangerous as this may catch
+	# unwanted exception so we print it.
+        print(traceback.format_exc())
+
+def warn_dialog(func):
+    """ Decorator which redirect warnings and error messages to a gtk MessageDialog """
+    class ShowWarning:
+        def __init__(self):
+            self.buffer = ""
+
+        def __call__(self, message, category, filename, lineno, f=None, line=None):
+            s = warnings.formatwarning(message, category, filename, lineno, line)
+            if sys.stderr is not None:
+                sys.stderr.write(s + '\n')
+            self.buffer += str(message) + '\n'
+
+    def wrapper(*args, **kwargs):
+        export_msg = args[-1]
+        backup_showwarning = warnings.showwarning
+        warnings.showwarning = ShowWarning()
+        try:
+            func(*args, **kwargs)
+            if len(warnings.showwarning.buffer) > 0:
+                export_msg.put([warnings.showwarning.buffer, Gtk.MessageType.WARNING])
+        except Exception as e:
+            traceback.print_exc()
+            export_msg.put([e, Gtk.MessageType.ERROR])
+        finally:
+            warnings.showwarning = backup_showwarning
+
+    return wrapper
+
+def export_process(*args, **kwargs):
+    """Export PDF in a separate process."""
+    warn_dialog(export)(*args, **kwargs)
+
+def export(files, pages, mdata, exportmode, file_out, quit_flag, _export_msg):
     global _report_pikepdf_err
     pdf_output = pikepdf.Pdf.new()
-    pdf_input = [pikepdf.open(p.copyname, password=p.password) for p in input_files]
+    pdf_input = [pikepdf.open(copyname, password=password) for copyname, password in files]
     copied_pages = {}
     # Copy pages from the input PDF files to the output PDF file
     for row in pages:
+        if quit_flag.is_set():
+            return
         current_page = pdf_input[row.nfile - 1].pages[row.npage - 1]
         # if the page already exists in the output PDF, duplicate it
         new_page = copied_pages.get((row.nfile, row.npage))
@@ -180,13 +228,17 @@ def export(input_files, pages, file_out, mode, mdata):
 
     # Apply geometrical transformations in the output PDF file
     for page_id, row in enumerate(pages):
-        new_page = pdf_output.pages[page_id]
-        _update_angle(row, new_page, new_page)
-        new_page.MediaBox = _mediabox(new_page, row.crop)
-        pdf_output.pages[page_id] = _scale(pdf_output, new_page, row.scale)
+        if quit_flag.is_set():
+            return
+        pdf_output.pages[page_id] = _apply_geom_transform(
+            pdf_output, pdf_output.pages[page_id], row
+        )
 
+    mdata = metadata.merge(mdata, files)
     if exportmode in ['ALL_TO_MULTIPLE', 'SELECTED_TO_MULTIPLE']:
         for n, page in enumerate(pdf_output.pages):
+            if quit_flag.is_set():
+                return
             outpdf = pikepdf.Pdf.new()
             _set_meta(mdata, pdf_input, outpdf)
             # needed to add this, probably related to pikepdf < 2.7.0 workaround
@@ -198,11 +250,11 @@ def export(input_files, pages, file_out, mode, mdata):
             if n > 0:
                 # Add page number to filename
                 outname = "".join(parts[:-1]) + str(n + 1) + '.' + parts[-1]
-            outpdf.remove_unreferenced_resources()
+            _remove_unreferenced_resources(outpdf)
             outpdf.save(outname)
     else:
         _set_meta(mdata, pdf_input, pdf_output)
-        pdf_output.remove_unreferenced_resources()
+        _remove_unreferenced_resources(pdf_output)
         pdf_output.save(file_out)
 
 def num_pages(filepath):
@@ -232,18 +284,26 @@ def generate_booklet(pdfqueue, tmp_dir, pages):
                      max(second_page_size[1], first_page_size[1])]
 
         first_original = source_files[first.nfile].pages[first.npage - 1]
-        first_foreign = file.copy_foreign(first_original)
-        _update_angle(first, first_original, first_foreign)
+        first_foreign = _apply_geom_transform(
+            file, file.copy_foreign(first_original), first
+        )
 
         second_original = source_files[second.nfile].pages[second.npage - 1]
-        second_foreign = file.copy_foreign(second_original)
-        _update_angle(second, second_original, second_foreign)
+        second_foreign = _apply_geom_transform(
+            file, file.copy_foreign(second_original), second
+        )
 
         content_dict[f'/Page{i*2}'] = pikepdf.Page(first_foreign).as_form_xobject()
         content_dict[f'/Page{i*2 + 1}'] = pikepdf.Page(second_foreign).as_form_xobject()
-
-        content_txt = (f'q 1 0 0 1 0 0 cm /Page{i*2} Do Q'
-                       f' q 1 0 0 1 {first_page_size[0]} 0 cm /Page{i*2 + 1} Do Q ')
+        # See PDF reference section 4.2.3 Transformation Matrices
+        tx1 = -first_foreign.MediaBox[0]
+        ty1 = -first_foreign.MediaBox[1]
+        tx2 = first_page_size[0] - float(second_foreign.MediaBox[0])
+        ty2 = -second_foreign.MediaBox[1]
+        content_txt = (
+            f"q 1 0 0 1 {tx1} {ty1} cm /Page{i*2} Do Q "
+            f"q 1 0 0 1 {tx2} {ty2} cm /Page{i*2 + 1} Do Q "
+        )
 
         newpage = pikepdf.Dictionary(
                 Type=pikepdf.Name.Page,

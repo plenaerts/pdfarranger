@@ -25,7 +25,7 @@ __all__ = [
 
 import sys
 import os
-import errno
+import traceback
 import mimetypes
 import copy
 import pathlib
@@ -69,8 +69,10 @@ class Page:
         self.copyname = copyname
         #: Left, right, top, bottom crop
         self.crop = list(crop)
-        #: width and height
-        self.size = list(size)
+        #: Width and height of the original page
+        self.size_orig = list(size)
+        #: Width and height
+        self.size = list(size) if angle in [0, 180] else list(reversed(size))
         self.angle = angle
         self.thumbnail = None
         self.resample = -1
@@ -122,6 +124,7 @@ class Page:
             return False
         self.crop = self.rotate_crop(self.crop, rt)
         self.angle = (self.angle + int(angle)) % 360
+        self.size = self.size_orig if self.angle in [0, 180] else list(reversed(self.size_orig))
         return True
 
     def serialize(self):
@@ -139,14 +142,6 @@ class Page:
             r.resample = -1
             r.preview = None
         return r
-
-    def set_size(self, size):
-        """set this page size from the Poppler page."""
-        self.size = list(size)
-        rotation = int(self.angle) % 360
-        rotation = round(rotation / 90) * 90
-        if rotation == 90 or rotation == 270:
-            self.size.reverse()
 
     def split(self, vcrops, hcrops):
         """Split this page into a grid and return all but the top-left page."""
@@ -194,9 +189,9 @@ class PasswordDialog(Gtk.Dialog):
             parent=parent,
             flags=Gtk.DialogFlags.MODAL,
             buttons=(
-                Gtk.STOCK_CANCEL,
+                "_Cancel",
                 Gtk.ResponseType.CANCEL,
-                Gtk.STOCK_OK,
+                "_OK",
                 Gtk.ResponseType.OK,
             ),
         )
@@ -249,13 +244,10 @@ class PDFDoc:
                 if not askpass:
                     raise e
 
-    def __init__(self, filename, basename, tmp_dir, parent):
+    def __init__(self, filename, basename, stat, tmp_dir, parent):
         self.render_lock = threading.Lock()
         self.filename = os.path.abspath(filename)
-        try:
-            self.mtime = os.path.getmtime(filename)
-        except OSError as e:
-            raise PDFDocError(e)
+        self.stat = stat
         if basename is None:  # When importing files
             self.basename = os.path.basename(filename)
         else:  # When copy-pasting
@@ -335,6 +327,7 @@ class PageAdder:
         self.before = False
         #: Where to insert pages. If None pages are inserted at the end
         self.treerowref = None
+        self.stat_cache = {}
 
     def move(self, treerowref, before):
         """Insert pages at the given location."""
@@ -345,10 +338,6 @@ class PageAdder:
         crop = [0] * 4 if crop is None else crop
         pdfdoc = None
         nfile = None
-        # Check if file exists
-        if not os.path.isfile(filename):
-            raise FileNotFoundError(
-                errno.ENOENT, os.strerror(errno.ENOENT), filename)
 
         # Check if added page or file already exist in pdfqueue
         for i, it_pdfdoc in enumerate(self.app.pdfqueue):
@@ -357,17 +346,26 @@ class PageAdder:
                 pdfdoc = it_pdfdoc
                 nfile = i + 1
                 break
-            elif (os.path.isfile(it_pdfdoc.filename)
-                  and os.path.samefile(filename, it_pdfdoc.filename)
-                  and os.path.getmtime(filename) == it_pdfdoc.mtime):
-                # Imported file was found in pdfqueue
-                pdfdoc = it_pdfdoc
-                nfile = i + 1
-                break
+        if pdfdoc is None:
+            if not filename in self.stat_cache:
+                try:
+                    s = os.stat(filename)
+                    self.stat_cache[filename] = s.st_dev, s.st_ino, s.st_mtime
+                except OSError as e:
+                    print(traceback.format_exc())
+                    self.app.error_message_dialog(e)
+                    return
+            for i, it_pdfdoc in enumerate(self.app.pdfqueue):
+                if self.stat_cache[filename] == it_pdfdoc.stat:
+                    # Imported file was found in pdfqueue
+                    pdfdoc = it_pdfdoc
+                    nfile = i + 1
+                    break
 
-        if not pdfdoc:
+        if pdfdoc is None:
             try:
-                pdfdoc = PDFDoc(filename, basename, self.app.tmp_dir, self.app.window)
+                pdfdoc = PDFDoc(filename, basename, self.stat_cache[filename],
+                                self.app.tmp_dir, self.app.window)
             except _UnknownPasswordException:
                 return
             except PDFDocError as e:
@@ -421,11 +419,12 @@ class PageAdder:
                 if select_added:
                     path = self.app.model.get_path(it)
                     self.app.iconview.select_path(path)
-                self.app.update_geometry(it)
         if add_to_undomanager:
+            self.app.update_iconview_geometry()
             GObject.idle_add(self.app.retitle)
-            self.app.zoom_set(self.app.zoom_level)
+            self.app.update_max_zoom_level()
             self.app.silent_render()
+            self.app.update_statusbar()
         self.pages = []
         return True
 

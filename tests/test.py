@@ -112,12 +112,12 @@ dogtail_manager = DogtailManager()
 
 
 class PdfArrangerManager:
-    def __init__(self, args=None, coverage=True):
+    def __init__(self, args=None):
         self.process = None
         args = [] if args is None else args
         cmd = [sys.executable, "-u", "-X", "tracemalloc"]
-        if coverage:
-            cmd = cmd + ["-m", "coverage", "run", "-a"]
+        if "PDFARRANGER_COVERAGE" in os.environ:
+            cmd = cmd + ["-m", "coverage", "run", "--concurrency=thread,multiprocessing", "-a"]
         self.process = subprocess.Popen(cmd + ["-m", "pdfarranger"] + args)
 
     def kill(self):
@@ -126,6 +126,16 @@ class PdfArrangerManager:
 
 class PdfArrangerTest(unittest.TestCase):
     LAST=False
+    def _start(self, args=None):
+        from dogtail.config import config
+        config.searchBackoffDuration = 1
+        self.__class__.pdfarranger = PdfArrangerManager(args)
+        # check that process is actually running
+        self.assertIsNone(self._process().poll())
+        self._app()
+        # Now let's go faster
+        config.searchBackoffDuration = 0.1
+
     def _app(self):
         # Cannot import at top level because of DBUS_SESSION_BUS_ADDRESS
         from dogtail.tree import root
@@ -150,18 +160,41 @@ class PdfArrangerTest(unittest.TestCase):
             self.assertLess(c, 30)
             c += 1
 
-    def _assert_selected(self, selection):
+    def _is_saving(self):
+        app = self._app()
+        from dogtail import predicate
+        allstatusbar = app.findChildren(predicate.GenericPredicate(roleName="status bar"), showingOnly=False)
+        statusbar = allstatusbar[0]
+        return statusbar.name.startswith("Saving")
+
+    def _wait_saving(self):
+        # When saving the main window is made unresponsive. When saving end
+        # it's made responsive again. We must be sure that it's responsive
+        # before continuing test else clicks may fail.
+        self._wait_cond(lambda: not self._is_saving())
+
+    def _status_text(self):
         app = self._app()
         from dogtail import predicate
         allstatusbar = app.findChildren(predicate.GenericPredicate(roleName="status bar"), showingOnly=False)
         # If we have multiple status bar, concider the last one as the one who display the selection
         statusbar = allstatusbar[-1]
-        self.assertTrue(statusbar.name.startswith("Selected pages: " + selection))
+        return statusbar.name
+
+    def _assert_selected(self, selection):
+        self.assertTrue(self._status_text().startswith("Selected pages: " + selection))
+
+    def _assert_page_size(self, width, height, pageid=None):
+        if pageid is not None:
+            self._icons()[pageid].click()
+            self._wait_cond(lambda: self._status_text().startswith(f"Selected pages: {pageid+1}"))
+        label = " {:.1f}mm \u00D7 {:.1f}mm".format(width, height)
+        self.assertTrue(self._status_text().endswith("Page Size:" + label))
 
     def _icons(self):
         """Return the list of page icons"""
         from dogtail import predicate
-        viewport = self._app().child(roleName="viewport")
+        viewport = self._app().child(roleName="layered pane")
         return viewport.findChildren(predicate.GenericPredicate(roleName="icon"), showingOnly=False)
 
     def _popupmenu(self, page, action):
@@ -191,6 +224,38 @@ class PdfArrangerTest(unittest.TestCase):
         ob.click()
         return filechooser
 
+    def _save_as_chooser(self, filebasename):
+        """
+        Fill and validate a Save As file chooser.
+        The file chooser is supposed to be already open.
+        """
+        filechooser = self._app().child(roleName="file chooser")
+        tmp = self.__class__.tmp
+        filename = os.path.join(tmp, filebasename)
+        filechooser.child(roleName="text").text = filename
+        saveb = filechooser.button("Save")
+        self._wait_cond(lambda: saveb.sensitive)
+        filechooser.button("Save").click()
+        self._wait_cond(lambda: os.path.isfile(filename))
+        self._wait_cond(lambda: filechooser.dead)
+        self._wait_saving()
+
+    def _scale_selected(self, scale):
+        app = self._app()
+        app.keyCombo("C")
+        dialog = app.child(roleName="dialog")
+        from dogtail import rawinput
+        rawinput.keyCombo("Tab")
+        rawinput.typeText(str(scale))
+        dialog.child(name="OK").click()
+        self._wait_cond(lambda: dialog.dead)
+
+    def _quit_without_saving(self):
+        self._app().child(roleName="layered pane").keyCombo("<ctrl>q")
+        dialog = self._app().child(roleName="alert")
+        dialog.child(name="Don’t Save").click()
+        self._process().wait(timeout=22)
+
     @classmethod
     def setUpClass(cls):
         cls.pdfarranger = None
@@ -214,13 +279,7 @@ class PdfArrangerTest(unittest.TestCase):
 
 class TestBatch1(PdfArrangerTest):
     def test_01_import_img(self):
-        self.__class__.pdfarranger = PdfArrangerManager(["data/screenshot.png"])
-        # check that process is actually running
-        self.assertIsNone(self._process().poll())
-        self._app()
-        from dogtail.config import config
-        # Now let's go faster
-        config.searchBackoffDuration = 0.1
+        self._start(["data/screenshot.png"])
 
     def test_02_properties(self):
         self._mainmenu("Edit Properties")
@@ -318,17 +377,14 @@ class TestBatch1(PdfArrangerTest):
         self._app().child(roleName="layered pane").keyCombo("Home")
         self._assert_selected("1")
         self._app().keyCombo("f")
+        for __ in range(2):
+             self._app().keyCombo("minus")
+        # Zoom level is now 0 and that's what will be saved to config.ini and
+        # used by next batches
 
     def test_09_save_as(self):
         self._mainmenu("Save")
-        filechooser = self._app().child(roleName="file chooser")
-        tmp = self.__class__.tmp
-        filename = os.path.join(tmp, "foobar.pdf")
-        filechooser.child(roleName="text").text = filename
-        saveb = filechooser.button("Save")
-        self._wait_cond(lambda: saveb.sensitive)
-        filechooser.button("Save").click()
-        self._wait_cond(lambda: os.path.isfile(filename))
+        self._save_as_chooser("foobar.pdf")
 
     def test_10_reverse(self):
         self._popupmenu(0, ["Select", "Same Page Format"])
@@ -342,6 +398,7 @@ class TestBatch1(PdfArrangerTest):
         dialog = self._app().child(roleName="alert")
         dialog.child(name="Cancel").click()
         self._app().keyCombo("<ctrl>s")
+        self._wait_saving()
         self._app().keyCombo("<ctrl>q")
         # check that process actually exit
         self._process().wait(timeout=22)
@@ -349,14 +406,7 @@ class TestBatch1(PdfArrangerTest):
 
 class TestBatch2(PdfArrangerTest):
     def test_01_open_empty(self):
-        from dogtail.config import config
-        config.searchBackoffDuration = 1
-        self.__class__.pdfarranger = PdfArrangerManager()
-        # check that process is actually running
-        self.assertIsNone(self._process().poll())
-        self._app()
-        # Now let's go faster
-        config.searchBackoffDuration = 0.1
+        self._start()
 
     def test_02_import(self):
         filechooser = self._import_file("tests/test.pdf")
@@ -368,15 +418,10 @@ class TestBatch2(PdfArrangerTest):
 
     def test_04_export(self):
         self._mainmenu(["Export", "Export All Pages to Individual Files…"])
-        filechooser = self._app().child(roleName="file chooser")
-        tmp = self.__class__.tmp
-        filename = os.path.join(tmp, "alltosingle.pdf")
-        filename2 = os.path.join(tmp, "alltosingle2.pdf")
-        filechooser.child(roleName="text").text = filename
-        saveb = filechooser.button("Save")
-        self._wait_cond(lambda: saveb.sensitive)
-        filechooser.button("Save").click()
-        self._wait_cond(lambda: os.path.isfile(filename) and os.path.isfile(filename2))
+        self._save_as_chooser("alltosingle.pdf")
+        # check the second page has been properly saved
+        filename2 = os.path.join(self.__class__.tmp, "alltosingle2.pdf")
+        self._wait_cond(lambda: os.path.isfile(filename2))
 
     def test_05_clear(self):
         self._popupmenu(1, "Delete")
@@ -397,20 +442,12 @@ class TestBatch2(PdfArrangerTest):
 
 
 class TestBatch3(PdfArrangerTest):
-    # Kill X11 after that batch
-    LAST=True
+    """Test encryption"""
     def test_01_open_encrypted(self):
-        from dogtail.config import config
-        config.searchBackoffDuration = 1
         filename = os.path.join(self.__class__.tmp, "other_encrypted.pdf")
         shutil.copyfile("tests/test_encrypted.pdf", filename)
-        self.__class__.pdfarranger = PdfArrangerManager([filename])
-        # check that process is actually running
-        self.assertIsNone(self._process().poll())
-        app = self._app()
-        # Now let's go faster
-        config.searchBackoffDuration = 0.1
-        dialog = app.child(roleName="dialog")
+        self._start([filename])
+        dialog = self._app().child(roleName="dialog")
         passfield = dialog.child(roleName="password text")
         passfield.text = "foobar"
         dialog.child(name="OK").click()
@@ -439,3 +476,74 @@ class TestBatch3(PdfArrangerTest):
         dialog.child(name="Replace").click()
         # check that process actually exit
         self._process().wait(timeout=22)
+
+
+class TestBatch4(PdfArrangerTest):
+    """Check the size of duplicated and scaled pages"""
+    def test_01_import_pdf(self):
+        self._start(["tests/test.pdf"])
+
+    def test_02_duplicate(self):
+        app = self._app()
+        app.keyCombo("Down")
+        self._popupmenu(0, ["Duplicate"])
+        app.keyCombo("Right")
+
+    def test_03_scale(self):
+        self._scale_selected(200)
+        self._app().keyCombo("<ctrl>Left")  # rotate left
+        self._assert_selected("2")
+        self._assert_page_size(558.8, 431.8)
+
+    def test_04_export(self):
+        app = self._app()
+        app.keyCombo("<ctrl>a")  # select all
+        self._mainmenu(["Export", "Export Selection to a Single File…"])
+        self._save_as_chooser("scaled.pdf")
+        self._popupmenu(1, "Delete")
+
+    def test_05_import(self):
+        filename = os.path.join(self.__class__.tmp, "scaled.pdf")
+        filechooser = self._import_file(filename)
+        self._wait_cond(lambda: filechooser.dead)
+        self.assertEqual(len(self._icons()), 3)
+        app = self._app()
+        self._app().child(roleName="layered pane").grabFocus()
+        app.keyCombo("Right")
+        app.keyCombo("Right")
+        self._assert_selected("2")
+        self._assert_page_size(558.8, 431.8)
+        self._quit_without_saving()
+
+
+class TestBatch5(PdfArrangerTest):
+    """Test booklet and blank pages"""
+    # Kill X11 after that batch
+    LAST = True
+
+    def test_01_import_pdf(self):
+        self._start(["tests/test.pdf"])
+
+    def test_02_blank_page(self):
+        self._popupmenu(0, ["Select", "Select All"])
+        self._popupmenu(0, ["Crop White Borders"])
+        self._scale_selected(150)
+        self._popupmenu(0, ["Insert Blank Page"])
+        dialog = self._app().child(roleName="dialog")
+        dialog.child(name="OK").click()
+        self._wait_cond(lambda: len(self._icons()) == 3)
+
+    def test_03_booklet(self):
+        self._popupmenu(0, ["Select", "Select All"])
+        self._popupmenu(0, ["Generate Booklet"])
+        self._wait_cond(lambda: len(self._icons()) == 2)
+        self._assert_page_size(489, 212.2, 0)
+        self._assert_page_size(489, 212.2, 1)
+
+    def test_04_crop_white_border(self):
+        self._popupmenu(0, ["Select", "Select All"])
+        self._popupmenu(0, ["Crop White Borders"])
+        self._assert_page_size(244.1, 211.8, 0)
+        self._assert_page_size(244.1, 211.8, 1)
+        self._quit_without_saving()
+
