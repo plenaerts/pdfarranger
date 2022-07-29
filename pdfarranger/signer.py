@@ -86,8 +86,11 @@ class _Coords_Widget(Gtk.HBox):
         self.pack_start(self.entry_y2, True, True, 6)
 
     def get_coords(self):
-        return (self.entry_x1.get_text(), self.entry_y1.get_text(),
-                self.entry_x2.get_text(), self.entry_y2.get_text())
+        coords = (float(self.entry_x1.get_text()),
+                  float(self.entry_y1.get_text()),
+                  float(self.entry_x2.get_text()),
+                  float(self.entry_y2.get_text()))
+        return coords
 
 
 class Signature_Position_Dialog(Gtk.Dialog):
@@ -119,8 +122,11 @@ class Signature_Position_Dialog(Gtk.Dialog):
 
 
 def sign_pdf(filename, sign_page, sign_coords):
+    # TODO: this should become configurable
     pkcs11_lib = '/usr/lib/x86_64-linux-gnu/pkcs11/beidpkcs11.so'
 
+    # TODO: we should move this to an earlier point.
+    # Without pyhanko we should not show the sign action.
     from pyhanko.sign.beid import open_beid_session, BEIDSigner
     from pyhanko.sign import signers
     from pyhanko.sign.fields import SigFieldSpec
@@ -130,7 +136,14 @@ def sign_pdf(filename, sign_page, sign_coords):
     eidsigner = BEIDSigner(eidsession, use_auth_cert=False)
 
     w = IncrementalPdfFileWriter(open(filename, 'rb+'))
-    print('Signing with coords: ' + str(sign_coords))
+
+    # Some debugging stuff. Should use logging?
+    msg = 'Signing with coords: ' + str(sign_coords) + ' with types: ' + \
+          str(type(sign_coords)) + ' holding '
+    for sc in sign_coords:
+        msg.append(str(type(sc)))
+    print(msg)
+
     signers.PdfSigner(
             signers.PdfSignatureMetadata(field_name='Signature1'),
             signer=eidsigner,
