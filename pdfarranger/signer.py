@@ -4,7 +4,7 @@ from gi.repository import Gtk
 _ = gettext.gettext
 
 
-class Page_Dialog(Gtk.Dialog):
+class PageDialog(Gtk.Dialog):
     """A dialog box to choose the page to sign."""
 
     def __init__(self, selection, window):
@@ -26,28 +26,31 @@ class Page_Dialog(Gtk.Dialog):
 
     def run_get(self):
         """If user selected multiple pages, let him choose between the first,
-        the last, or to choose again."""
+        the last, or to choose again.
+        """
         result = self.run()
         r = None
         if result == 1:
-            r = min(self.selection).get_indices()[0]
+            r = min(self.selection)
         elif result == 2:
-            r = max(self.selection).get_indices()[0]
+            r = max(self.selection)
         elif result == Gtk.ResponseType.CANCEL:
-            r = None
+            r = -1
         self.destroy()
         return r
 
 
-class _Coords_Widget(Gtk.Grid):
+class _CoordsWidget(Gtk.Grid):
     """A grid to specify the coords of the position of the
     signature on a page."""
 
-    def __init__(self, page_icon):
+    def __init__(self, sign_page):
         super().__init__()
         # We want the user to click that image in some place, and get the
         # coords. Now the user must enter coord numbers and guess until
         # the rectangle position seems about right on a white background...
+
+        self.sign_page = sign_page
 
         self.set_column_homogeneous(True)
         self.set_row_homogeneous(False)
@@ -87,22 +90,6 @@ class _Coords_Widget(Gtk.Grid):
     def on_draw(self, widget, event):
         height = widget.get_allocated_height()
         width = widget.get_allocated_width()
-        # page_ratio = self.PAGE_HEIGHT / self.PAGE_WIDTH
-        cr = widget.get_window().cairo_create()
-        # A white background.
-        cr.set_source_rgb(1, 1, 1)
-        page_offset_left = round((width - 210) / 2)
-        page_offset_top = round((height - 297)/2)
-        cr.rectangle(page_offset_left, page_offset_top, 210, 297)
-        cr.fill()
-        # A black outline for the white background.
-        cr.set_line_width(1)
-        cr.set_source_rgb(0, 0, 0)
-        cr.rectangle(page_offset_left, page_offset_top, 210, 297)
-        cr.stroke()
-        # The signature field in red.
-        cr.set_line_width(1)
-        cr.set_source_rgb(1, 0, 0)
 
         # PDF's use 72 DPI Cartesian coords = 0,0 is bottom left of page.
         # Cairo's coord system works top left to bottom right.
@@ -113,10 +100,32 @@ class _Coords_Widget(Gtk.Grid):
         DPI = 72.0  # 72 coord points in the PDF coord system = 1 inch
         DP_MM = DPI / 25.4  # 1 Inch = 25,4 Millimeter
 
+        page_width_mm = self.sign_page.size[0] / DP_MM
+        page_height_mm = self.sign_page.size[1] / DP_MM
+
+        # page_ratio = self.PAGE_HEIGHT / self.PAGE_WIDTH
+        cr = widget.get_window().cairo_create()
+        # A white background.
+        cr.set_source_rgb(1, 1, 1)
+        page_offset_left = round((width - page_width_mm) / 2)
+        page_offset_top = round((height - page_height_mm)/2)
+        cr.rectangle(page_offset_left, page_offset_top,
+                     page_width_mm, page_height_mm)
+        cr.fill()
+        # A black outline for the white background.
+        cr.set_line_width(1)
+        cr.set_source_rgb(0, 0, 0)
+        cr.rectangle(page_offset_left, page_offset_top,
+                     page_width_mm, page_height_mm)
+        cr.stroke()
+        # The signature field in red.
+        cr.set_line_width(1)
+        cr.set_source_rgb(1, 0, 0)
+
         # origin_x is the x value of the left side of the page in cairo.
         origin_x = page_offset_left
         # origin_y is the y value of the bottom of the page in cairo.
-        origin_y = page_offset_top + 297
+        origin_y = page_offset_top + page_height_mm
 
         # sig_x1 is the left edge of the signature. It should be to the
         # right of the left side of the page in cairo, that means adding.
@@ -149,10 +158,10 @@ class _Coords_Widget(Gtk.Grid):
         return coords
 
 
-class Signature_Position_Dialog(Gtk.Dialog):
+class SignaturePositionDialog(Gtk.Dialog):
     """A dialog box to choose where on the page to sign."""
 
-    def __init__(self, selection, window):
+    def __init__(self, sign_page, window):
         super().__init__(
             title=_("Signature position:"),
             parent=window,
@@ -161,8 +170,8 @@ class Signature_Position_Dialog(Gtk.Dialog):
                      Gtk.STOCK_OK, Gtk.ResponseType.OK),
         )
         self.set_default_size(300, 500)
-        self.selection = selection
-        self.coords_widget = _Coords_Widget(self.selection)
+        self.sign_page = sign_page
+        self.coords_widget = _CoordsWidget(self.sign_page)
         self.vbox.pack_start(self.coords_widget, True, True, 6)
         self.show_all()
         self.set_default_response(Gtk.ResponseType.OK)

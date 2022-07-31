@@ -31,6 +31,7 @@ import pikepdf
 from urllib.request import url2pathname
 from functools import lru_cache
 from math import log
+import time
 
 multiprocessing.freeze_support()  # Does nothing in Linux
 
@@ -2305,21 +2306,39 @@ class PdfArranger(Gtk.Application):
             error_msg_dlg.destroy()
 
     def __get_sign_page_and_coords(self):
+        # The trick here is to get pages from the iconview.
+
+        # One item from the get_selected_items() is a path.
+        # Use the path to get a position and the Page itself
+        # from the model.
+
+        # The page numbers in the Page refer to the source docs,
+        # not the destination doc. To get the page number in the
+        # destination doc, use path.get_indices()[0]
+
+        # All of the above is no doubt very clear if you know
+        # your way around Gtk.IconView...
+
         selection = self.iconview.get_selected_items()
-        sign_page = None
+        sign_page_index = -1
         if len(selection) > 1:
             # Multiple pages selected, ask which one to sign with a dialog.
-            d = signer.Page_Dialog(selection, self.window)
-            sign_page = d.run_get()
+            d = signer.PageDialog(selection, self.window)
+            sign_page_path = d.run_get()
         else:
             # Only one page selected. Don't forget to fetch the
-            # int from the Gtk.TreePath object that's in selection[0]
-            sign_page = selection[0].get_indices()[0]
+            sign_page_path = selection[0]
+
+        model = self.iconview.get_model()
+        pos = model.get_iter(sign_page_path)
+        sign_page = model.get_value(pos, 0)
+        sign_page_index = sign_page_path.get_indices()[0]
 
         sign_coords = None
-        d = signer.Signature_Position_Dialog(selection, self.window)
-        sign_coords = d.run_get()
-        return sign_page, sign_coords
+        if sign_page_index >= 0:
+            d = signer.SignaturePositionDialog(sign_page, self.window)
+            sign_coords = d.run_get()
+        return sign_page_index, sign_coords
 
     def sign_pdf(self, _action, _parameter, _unknown):
         """Export to a PDF and sign it using pyHanko.
@@ -2351,7 +2370,7 @@ class PdfArranger(Gtk.Application):
         sign_page, sign_coords = self.__get_sign_page_and_coords()
 
         # Save and sign
-        if sign_page is not None and sign_coords:
+        if sign_page is not None and sign_coords is not None:
             self.choose_export_pdf_name_and_sign(sign_page,
                                                  sign_coords,
                                                  savemode=GLib.Variant('i', 0),
@@ -2390,10 +2409,17 @@ class PdfArranger(Gtk.Application):
 
         response = chooser.run()
         file_out = chooser.get_filename()
+        (path, shortname) = os.path.split(file_out)
+        (shortname, ext) = os.path.splitext(shortname)
+        if ext.lower() != '.pdf':
+            file_out = file_out + '.pdf'
         chooser.destroy()
         if response == Gtk.ResponseType.ACCEPT:
             try:
                 self.save(savemode, file_out)
+                while self.export_process.is_alive():
+                    time.sleep(1)
+
                 signer.sign_pdf(file_out, sign_page, sign_coords)
                 self.__clear_and_reopen(file_out)
                 self.info_message_dialog(_('Document succesfully signed.') +
