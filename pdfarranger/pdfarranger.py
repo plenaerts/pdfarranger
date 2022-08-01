@@ -109,8 +109,14 @@ from gi.repository import Gio  # for inquiring mime types information
 from gi.repository import GLib
 from gi.repository import Pango
 
-if os.name == 'nt' and GLib.get_language_names():
-    os.environ['LANG'] = GLib.get_language_names()[0]
+from .config import Config
+
+if os.name == 'nt':
+    lang = Config(DOMAIN).language()
+    if not lang and GLib.get_language_names():
+        lang = GLib.get_language_names()[0]
+    os.environ['LANG'] = lang
+
 gettext.bindtextdomain(DOMAIN, localedir)
 gettext.textdomain(DOMAIN)
 _ = gettext.gettext
@@ -121,10 +127,7 @@ from . import metadata
 from . import croputils
 from . import splitter
 from . import signer
-from .iconview import CellRendererImage
-from .iconview import IconviewCursor
-from .iconview import IconviewDragSelect
-from .config import Config
+from .iconview import CellRendererImage, IconviewCursor, IconviewDragSelect, IconviewPanView
 from .core import img2pdf_supported_img, PageAdder, PDFDocError, PDFRenderer
 GObject.type_register(CellRendererImage)
 
@@ -244,6 +247,10 @@ class PdfArranger(Gtk.Application):
         self.window_width_old = 0
         self.set_iv_visible_id = None
         self.vadj_percent = None
+        self.end_rubberbanding = False
+        self.disable_quit = False
+        multiprocessing.set_start_method('spawn')
+        self.quit_flag = multiprocessing.Event()
 
         # Clipboard for cut copy paste
         self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
@@ -359,6 +366,7 @@ class PdfArranger(Gtk.Application):
             ('zoom-in', self.on_action_zoom_in),
             ('zoom-out', self.on_action_zoom_out),
             ('zoom-fit', self.on_action_zoom_fit),
+            ('fullscreen', self.on_action_fullscreen),
             ('close', self.on_action_close),
             ('quit', self.on_quit),
             ('undo', self.undomanager.undo),
@@ -375,6 +383,7 @@ class PdfArranger(Gtk.Application):
             ("insert-blank-page", self.insert_blank_page),
             ('sign', self.sign_pdf),
             ("generate-booklet", self.generate_booklet),
+            ("print", self.on_action_print),
         ]
         self.window.add_action_entries(self.actions)
 
@@ -440,6 +449,8 @@ class PdfArranger(Gtk.Application):
         self.clear_selected(add_to_undomanager=False)
         self.silent_render()
 
+    def on_action_print(self, _action, _option, _unknown):
+        exporter.PrintOperation(self).run()
 
     @staticmethod
     def __create_filters(file_type_list):
@@ -581,7 +592,7 @@ class PdfArranger(Gtk.Application):
         self.iconview.override_background_color(Gtk.StateFlags.PRELIGHT,
                                                 color_prelight)
 
-        # Set cursor look, hide rubberband selection rectangle, hide overshoot gradient
+        # Set cursor look and hide overshoot gradient
         style_provider = Gtk.CssProvider()
         css_data = """
         iconview {
@@ -590,10 +601,6 @@ class PdfArranger(Gtk.Application):
             outline-offset: -2px;
             outline-width: 2px;
             -gtk-outline-radius: 2px;
-        }
-        iconview rubberband {
-            border-color: alpha(currentColor, 0.0);
-            background-color: alpha(currentColor, 0.0);
         }
         scrolledwindow overshoot {
             background: none;
@@ -615,6 +622,7 @@ class PdfArranger(Gtk.Application):
 
         self.iv_cursor = IconviewCursor(self)
         self.iv_drag_select = IconviewDragSelect(self)
+        self.iv_pan_view = IconviewPanView(self)
 
     def do_command_line(self, command_line):
         options = command_line.get_options_dict()
@@ -766,6 +774,7 @@ class PdfArranger(Gtk.Application):
             title += '*'
 
         all_files = set(os.path.splitext(doc.basename)[0] for doc in self.pdfqueue)
+        all_files.discard('')
         if len(all_files) > 0:
             title += ' [' + ', '.join(sorted(all_files)) + ']'
 
@@ -955,11 +964,8 @@ class PdfArranger(Gtk.Application):
         malloc_trim()
 
     def on_quit(self, _action, _param=None, _unknown=None):
-        if self.export_process and self.export_process.is_alive():
-            msg = _('Abort saving and quit?')
-            confirm = self.confirm_dialog(msg, action=_('_Quit'))
-            if not confirm:
-                return True
+        if self.disable_quit:
+            return True
         elif self.is_unsaved:
             if len(self.model) == 0:
                 msg = _('Discard changes and quit?')
@@ -983,13 +989,13 @@ class PdfArranger(Gtk.Application):
 
     def close_application(self, _widget=None, _event=None, _data=None):
         """Termination"""
+        self.quit_flag.set()
         if self.rendering_thread:
             self.rendering_thread.quit = True
             self.rendering_thread.join()
             self.rendering_thread.pdfqueue = []
 
         if self.export_process:
-            self.quit_flag.set()
             self.export_process.join(timeout=2)
             if self.export_process.is_alive():
                 self.export_process.terminate()
@@ -1150,9 +1156,6 @@ class PdfArranger(Gtk.Application):
                 return # Abort
 
         files = [(pdf.copyname, pdf.password) for pdf in self.pdfqueue]
-        if not self.export_process:
-            multiprocessing.set_start_method('spawn')
-        self.quit_flag = multiprocessing.Event()
         export_msg = multiprocessing.Queue()
         a = files, pages, self.metadata, exportmode, file_out, self.quit_flag, export_msg
         self.export_process = multiprocessing.Process(target=exporter.export_process, args=a)
@@ -1202,18 +1205,21 @@ class PdfArranger(Gtk.Application):
                 self.close_application()
         self.post_action = None
 
-    def set_export_state(self, enable):
+    def set_export_state(self, enable, message=_("Saving…")):
         """Enable/disable app export state.
 
         When enabled app is moveable, resizable and closeable but does not respond to other input.
         """
+        if self.quit_flag.is_set():
+            return
         self.sw.set_sensitive(not enable)
         self.main_menu.set_sensitive(not enable)
+        self.disable_quit = enable
         for a in self.actions:
             self.window.lookup_action(a[0]).set_enabled(not enable)
         ctxt_id = self.status_bar2.get_context_id("saving")
         if enable:
-            self.status_bar2.push(ctxt_id, _('Saving…'))
+            self.status_bar2.push(ctxt_id, message)
             cursor = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), 'wait')
             self.quit_rendering()
         else:
@@ -1358,6 +1364,7 @@ class PdfArranger(Gtk.Application):
         pageadder = PageAdder(self)
         model = self.iconview.get_model()
         iter_to = None
+        iref = ref_to.get_path().get_indices()[0] if ref_to else 0
 
         self.undomanager.commit("Paste")
         self.set_unsaved(True)
@@ -1380,6 +1387,10 @@ class PdfArranger(Gtk.Application):
             else:
                 ref_to = None
 
+        iscroll = iref if before else iref + 1
+        scroll_path = Gtk.TreePath.new_from_indices([iscroll])
+        self.iconview.scroll_to_path(scroll_path, False, 0, 0)
+
     def on_action_delete(self, _action, _parameter, _unknown):
         """Removes the selected elements in the IconView"""
 
@@ -1399,7 +1410,7 @@ class PdfArranger(Gtk.Application):
         self.window.lookup_action("paste").set_enabled(True)
 
     def on_action_paste(self, _action, mode, _unknown):
-        """Paste pages or files from clipboard."""
+        """Paste pages, file paths or an image from clipboard."""
         data, data_is_filepaths = self.read_from_clipboard()
         if not data:
             return
@@ -1446,37 +1457,49 @@ class PdfArranger(Gtk.Application):
             self.silent_render()
 
     def read_from_clipboard(self):
-        """Read data from clipboards. Check if data is copied pages or files.
+        """Read and pre-process data from clipboard.
 
-        If id "pdfarranger-clipboard" is found pages is expected to be in clipboard, else files.
+        If an image is found it is stored as a temporary png file.
+        If id "pdfarranger-clipboard" is found pages is expected to be in clipboard, else file paths.
         """
-        data = self.clipboard.wait_for_text()
-        if not data:
-            data = ''
-
-        data_is_filepaths = False
-        if data.startswith('pdfarranger-clipboard\n'):
-            data = data.replace('pdfarranger-clipboard\n', '', 1)
-            data = data.split('\n;\n')
-            if not self.is_data_valid(data):
-                data = []
-        else:
+        if len(img2pdf_supported_img) > 0 and self.clipboard.wait_is_image_available():
             data_is_filepaths = True
-            if os.name == 'posix' and data.startswith('x-special/nautilus-clipboard\ncopy'):
-                data = data.replace('x-special/nautilus-clipboard\ncopy', '', 1)
-            rows = data.split('\n')
-            rows = filter(None, rows)
-            data = []
-            for row in rows:
-                if os.name == 'posix' and row.startswith('file:///'):  # Dolphin, Nautilus
-                    row = get_file_path_from_uri(row)
-                elif os.name == 'nt' and row.startswith('"') and row.endswith('"'):
-                    row = row[1:-1]
-                if os.path.isfile(row):
-                    data.append(row)
-                else:
+            image = self.clipboard.wait_for_image()
+            if image is None:
+                data = ''
+            else:
+                fd, filename = tempfile.mkstemp(suffix=".png", dir=self.tmp_dir)
+                os.close(fd)
+                image.savev(filename, "png", [], [])
+                data = [filename]
+        else:
+            data = self.clipboard.wait_for_text()
+            if not data:
+                data = ''
+
+            data_is_filepaths = False
+            if data.startswith('pdfarranger-clipboard\n'):
+                data = data.replace('pdfarranger-clipboard\n', '', 1)
+                data = data.split('\n;\n')
+                if not self.is_data_valid(data):
                     data = []
-                    break
+            else:
+                data_is_filepaths = True
+                if os.name == 'posix' and data.startswith('x-special/nautilus-clipboard\ncopy'):
+                    data = data.replace('x-special/nautilus-clipboard\ncopy', '', 1)
+                rows = data.split('\n')
+                rows = filter(None, rows)
+                data = []
+                for row in rows:
+                    if os.name == 'posix' and row.startswith('file:///'):  # Dolphin, Nautilus
+                        row = get_file_path_from_uri(row)
+                    elif os.name == 'nt' and row.startswith('"') and row.endswith('"'):
+                        row = row[1:-1]
+                    if os.path.isfile(row):
+                        data.append(row)
+                    else:
+                        data = []
+                        break
 
         return data, data_is_filepaths
 
@@ -1738,13 +1761,17 @@ class PdfArranger(Gtk.Application):
         with GObject.signal_handler_block(self.iconview, self.id_selection_changed_event):
             sw_vadj.set_value(sw_vadj.get_value() + step)
             if not self.click_path:
-                changed = self.iv_drag_select.motion(rubberbanded=True, step=step)
+                changed = self.iv_drag_select.motion(step=step)
                 if changed:
                     self.iv_selection_changed_event()
         return True  # call me again
 
     def iv_motion(self, iconview, event):
         """Manages mouse movement on the iconview."""
+        # Pan the view when pressing mouse wheel and moving mouse
+        if event.state & Gdk.ModifierType.BUTTON2_MASK:
+            self.iv_pan_view.motion(event)
+
         # Detect drag and drop events
         if self.pressed_button:
             if iconview.drag_check_threshold(self.pressed_button.x,
@@ -1763,12 +1790,14 @@ class PdfArranger(Gtk.Application):
                     changed = self.iv_drag_select.motion(event)
                 if changed:
                     self.iv_selection_changed_event()
-                return True  # Don't use iconview's built-in rubberband-selecting
 
     def iv_button_release_event(self, iconview, event):
         """Manages mouse releases on the iconview"""
-        self.iv_drag_select.set_mouse_cursor('default')
-        self.iv_drag_select.click_location = None
+        if self.end_rubberbanding:
+            self.end_rubberbanding = False
+            return
+        self.iv_drag_select.end()
+        self.iv_pan_view.end()
 
         if self.pressed_button:
             # Button was pressed and released on a previously selected item
@@ -1798,14 +1827,12 @@ class PdfArranger(Gtk.Application):
             self.on_action_zoom_fit()
             return True
 
+        # Change to 'move' cursor when pressing mouse wheel
+        if event.button == 2:
+            self.iv_pan_view.click(event)
+
         click_path_old = self.click_path
         self.click_path = iconview.get_path_at_pos(event.x, event.y)
-
-        # Go into drag-select mode if clicked between items
-        if event.button == 1 and not self.click_path:
-            location = self.iv_drag_select.click(event)
-            if event.state & Gdk.ModifierType.SHIFT_MASK or not location:
-                return 1
 
         # On shift-click, select all items from cursor up to the shift-clicked item.
         # On shift-ctrl-click, toggle selection for single items.
@@ -1844,10 +1871,14 @@ class PdfArranger(Gtk.Application):
             selection = iconview.get_selected_items()
             if self.click_path and self.click_path in selection:
                 self.pressed_button = event
+                if iconview.get_cursor()[1] != self.click_path:
+                    self.iconview.set_cursor(self.click_path, None, False)
                 return 1  # prevent propagation i.e. (de-)selection
 
         # Display right click menu
-        if event.button == 3:
+        if event.button == 3 and not self.iv_auto_scroll_timer:
+            self.iv_drag_select.end()
+            self.iv_pan_view.end()
             if self.click_path:
                 selection = iconview.get_selected_items()
                 if self.click_path not in selection:
@@ -1858,6 +1889,19 @@ class PdfArranger(Gtk.Application):
             iconview.grab_focus()
             self.popup.popup(None, None, None, None, event.button, event.time)
             return 1
+
+        # Go into drag-select mode if clicked between items
+        if not self.click_path:
+            if event.button == 1:
+                self.iv_drag_select.click(event)
+            if event.state & Gdk.ModifierType.SHIFT_MASK:
+                return True  # Don't deselect all
+
+            # Let iconview hide cursor. Then stop rubberbanding with the release event
+            self.end_rubberbanding = True
+            release_event = event.copy()
+            release_event.type = Gdk.EventType.BUTTON_RELEASE
+            release_event.put()
 
     def iv_key_press_event(self, iconview, event):
         """Manages keyboard press events on the iconview."""
@@ -1899,10 +1943,11 @@ class PdfArranger(Gtk.Application):
     def window_focus_in_out_event(self, _widget=None, _event=None):
         """Keyboard focus enter or leave window."""
         # Enable or disable paste actions based on clipboard content
-        data_available = True if self.clipboard.wait_for_text() else False
+        text = self.clipboard.wait_is_text_available()
+        image = len(img2pdf_supported_img) > 0 and self.clipboard.wait_is_image_available()
         if self.window.lookup_action("paste"):  # Prevent error when closing with Alt+F4
             if self.sw.is_sensitive():
-                self.window.lookup_action("paste").set_enabled(data_available)
+                self.window.lookup_action("paste").set_enabled(text or image)
 
     def sw_dnd_received_data(self, _scrolledwindow, _context, _x, _y,
                              selection_data, target_id, _etime):
@@ -1962,7 +2007,7 @@ class PdfArranger(Gtk.Application):
             with GObject.signal_handler_block(self.iconview, self.id_selection_changed_event):
                 sw_vadj.set_value(sw_vadj.get_value() + step)
                 if event.state & Gdk.ModifierType.BUTTON1_MASK:
-                    changed = self.iv_drag_select.motion(event, rubberbanded=True, step=step)
+                    changed = self.iv_drag_select.motion(event, step=step)
                     if changed:
                         self.iv_selection_changed_event()
         return True
@@ -2058,6 +2103,16 @@ class PdfArranger(Gtk.Application):
             self.zoom_level_old = self.zoom_level
             self.zoom_fit_page = True
             self.zoom_fit(path)
+
+    def on_action_fullscreen(self, _action, _param, _unknown):
+        """Toggle fullscreen mode."""
+        header_bar = self.uiXML.get_object('header_bar')
+        if header_bar.get_visible():
+            self.window.fullscreen()
+            header_bar.hide()
+        else:
+            self.window.unfullscreen()
+            header_bar.show()
 
     def scroll_to_selection(self):
         """Scroll iconview so that selection is in center of window."""
@@ -2244,7 +2299,7 @@ class PdfArranger(Gtk.Application):
         about_dialog.set_comments(
             "".join(
                 (
-                    _("%s is a tool for rearranging and modifying PDF files. ")
+                    _("%s is a tool for rearranging and modifying PDF files.")
                     % APPNAME,
                     "\n \n",
                     _("It uses libqpdf %s, pikepdf %s, GTK %s and Python %s.")
@@ -2284,7 +2339,7 @@ class PdfArranger(Gtk.Application):
             msg += " | "+_("Page Size:")+ " {:.1f}mm \u00D7 {:.1f}mm".format(*pagesize)
         self.status_bar.push(ctxt_id, msg)
 
-        for a in ["save", "save-as", "select", "export-all", "zoom-fit"]:
+        for a in ["save", "save-as", "select", "export-all", "zoom-fit", "print"]:
             self.window.lookup_action(a).set_enabled(num_pages > 0)
 
     def error_message_dialog(self, msg):

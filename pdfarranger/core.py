@@ -127,6 +127,9 @@ class Page:
         self.size = self.size_orig if self.angle in [0, 180] else list(reversed(self.size_orig))
         return True
 
+    def unmodified(self):
+        return self.angle == 0 and self.crop == [0]*4 and self.scale == 1
+
     def serialize(self):
         """Convert to string for copy/past operations."""
         ts = [self.copyname, self.npage, self.basename, self.angle, self.scale] + list(self.crop)
@@ -224,6 +227,34 @@ class PasswordDialog(Gtk.Dialog):
             raise _UnknownPasswordException()
 
 
+def _img_to_pdf(filename, tmp_dir):
+    """Wrap img2pdf.convert to handle some corner cases"""
+    fd, pdf_file_name = tempfile.mkstemp(suffix=".pdf", dir=tmp_dir)
+    os.close(fd)
+    with open(pdf_file_name, "wb") as f:
+        img = img2pdf.Image.open(filename)
+        if (img.mode == "LA") or (img.mode != "RGBA" and "transparency" in img.info):
+            # TODO: Find a way to keep image in P or L format and remove transparency.
+            # This will work but converting from 1, L, P to RGB is not optimal.
+            img = img.convert("RGBA")
+        if img.mode == "RGBA":
+            bg = img2pdf.Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[-1])
+            imgio = img2pdf.BytesIO()
+            bg.save(imgio, "PNG")
+            imgio.seek(0)
+            f.write(img2pdf.convert(imgio))
+        else:
+            try:
+                # Try to handle invalid EXIF rotation
+                rot = img2pdf.Rotation.ifvalid
+            except AttributeError:
+                # img2pdf is too old so we can't support invalid EXIF rotation
+                rot = None
+            f.write(img2pdf.convert(filename, rotation=rot))
+    return pdf_file_name
+
+
 class PDFDoc:
     """Class handling PDF documents."""
 
@@ -273,27 +304,14 @@ class PDFDoc:
             if not img2pdf:
                 raise PDFDocError(_("Image files are only supported with img2pdf"))
             if mimetypes.guess_type(filename)[0] in img2pdf_supported_img:
-                fd, self.copyname = tempfile.mkstemp(suffix=".pdf", dir=tmp_dir)
-                os.close(fd)
-                with open(self.copyname, "wb") as f:
-                    img = img2pdf.Image.open(filename)
-                    if (img.mode == "LA") or (img.mode != "RGBA" and "transparency" in img.info):
-                        # TODO: Find a way to keep image in P or L format and remove transparency.
-                        # This will work but converting from 1, L, P to RGB is not optimal.
-                        img = img.convert("RGBA")
-                    if img.mode == "RGBA":
-                        bg = img2pdf.Image.new("RGB", img.size, (255, 255, 255))
-                        bg.paste(img, mask=img.split()[-1])
-                        imgio = img2pdf.BytesIO()
-                        bg.save(imgio, "PNG")
-                        imgio.seek(0)
-                        f.write(img2pdf.convert(imgio))
-                    else:
-                        f.write(img2pdf.convert(filename))
+                self.copyname = _img_to_pdf(filename, tmp_dir)
                 uri = pathlib.Path(self.copyname).as_uri()
                 self.document = Poppler.Document.new_from_file(uri, None)
             else:
                 raise PDFDocError(_("Image format is not supported by img2pdf"))
+            if filename.startswith(tmp_dir) and filename.endswith(".png"):
+                os.remove(filename)
+                self.basename = _("Clipboard image")
         else:
             raise PDFDocError(_("File is neither pdf nor image"))
 
@@ -372,7 +390,8 @@ class PageAdder:
                 print(e.message, file=sys.stderr)
                 self.app.error_message_dialog(e.message)
                 return
-            if pdfdoc.copyname != pdfdoc.filename and basename is None:
+            if (pdfdoc.copyname != pdfdoc.filename and basename is None and not
+                (filename.startswith(self.app.tmp_dir) and filename.endswith(".png"))):
                 self.app.import_directory = os.path.split(filename)[0]
                 self.app.export_directory = self.app.import_directory
             self.app.pdfqueue.append(pdfdoc)
@@ -425,8 +444,22 @@ class PageAdder:
             self.app.update_max_zoom_level()
             self.app.silent_render()
             self.app.update_statusbar()
+            self.scroll()
         self.pages = []
         return True
+
+    def scroll(self):
+        """Scroll to first added page."""
+        if self.treerowref:
+            iref = self.treerowref.get_path().get_indices()[0]
+        else:
+            iref = len(self.app.model) - 1 - len(self.pages)
+            self.before = False
+        if self.before:
+            scroll_path = Gtk.TreePath.new_from_indices([max(iref - len(self.pages), 0)])
+        else:
+            scroll_path = Gtk.TreePath.new_from_indices([max(iref + 1, 0)])
+        self.app.iconview.scroll_to_path(scroll_path, False, 0, 0)
 
 
 class PDFRenderer(threading.Thread, GObject.GObject):

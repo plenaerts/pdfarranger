@@ -30,6 +30,7 @@ _DEFAULT_ACCELS = [
     ('save-as', '<Primary><Shift>s'),
     ('export-selection(2)', '<Primary>e'),
     ('export-all', '<Primary><Shift>e'),
+    ('print', '<Primary>p'),
     ('close', '<Primary>w'),
     ('quit', '<Primary>q'),
     ('new', '<Primary>n'),
@@ -38,6 +39,7 @@ _DEFAULT_ACCELS = [
     ('zoom-in', 'plus KP_Add <Primary>plus <Primary>KP_Add'),
     ('zoom-out', 'minus KP_Subtract <Primary>minus <Primary>KP_Subtract'),
     ('zoom-fit', 'f'),
+    ('fullscreen', 'F11'),
     ('undo', '<Primary>z'),
     ('redo', '<Primary>y'),
     ('cut', '<Primary>x'),
@@ -150,6 +152,9 @@ class Config(object):
 
     def set_show_save_warnings(self, enabled):
         self.data.set('preferences', 'show-save-warnings', str(enabled))
+
+    def language(self):
+        return self.data.get('preferences', 'language', fallback="")
 
     def save(self):
         conffile = Config._config_file(self.domain)

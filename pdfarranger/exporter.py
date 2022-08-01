@@ -21,8 +21,12 @@ import traceback
 import sys
 import warnings
 import tempfile
+import io
+import gi
 from . import metadata
 from gi.repository import Gtk
+gi.require_version("Poppler", "0.18")
+from gi.repository import Poppler
 import gettext
 _ = gettext.gettext
 
@@ -198,14 +202,14 @@ def export_process(*args, **kwargs):
     """Export PDF in a separate process."""
     warn_dialog(export)(*args, **kwargs)
 
-def export(files, pages, mdata, exportmode, file_out, quit_flag, _export_msg):
-    global _report_pikepdf_err
-    pdf_output = pikepdf.Pdf.new()
-    pdf_input = [pikepdf.open(copyname, password=password) for copyname, password in files]
+
+def _copy_n_transform(pdf_input, pdf_output, pages, quit_flag=None):
+    # all pages must be copied to pdf_output BEFORE applying geometrical
+    # transformation. See https://github.com/pikepdf/pikepdf/issues/271
     copied_pages = {}
     # Copy pages from the input PDF files to the output PDF file
     for row in pages:
-        if quit_flag.is_set():
+        if quit_flag is not None and quit_flag.is_set():
             return
         current_page = pdf_input[row.nfile - 1].pages[row.npage - 1]
         # if the page already exists in the output PDF, duplicate it
@@ -228,16 +232,24 @@ def export(files, pages, mdata, exportmode, file_out, quit_flag, _export_msg):
 
     # Apply geometrical transformations in the output PDF file
     for page_id, row in enumerate(pages):
-        if quit_flag.is_set():
+        if quit_flag is not None and quit_flag.is_set():
             return
         pdf_output.pages[page_id] = _apply_geom_transform(
             pdf_output, pdf_output.pages[page_id], row
         )
 
-    mdata = metadata.merge(mdata, files)
+
+def export_doc(pdf_input, pages, mdata, exportmode, file_out, quit_flag):
+    """Same as export() but with pikepdf.PDF objects instead of files"""
+    global _report_pikepdf_err
+    pdf_output = pikepdf.Pdf.new()
+    _copy_n_transform(pdf_input, pdf_output, pages, quit_flag)
+    if quit_flag is not None and quit_flag.is_set():
+        return
+    mdata = metadata.merge_doc(mdata, pdf_input)
     if exportmode in ['ALL_TO_MULTIPLE', 'SELECTED_TO_MULTIPLE']:
         for n, page in enumerate(pdf_output.pages):
-            if quit_flag.is_set():
+            if quit_flag is not None and quit_flag.is_set():
                 return
             outpdf = pikepdf.Pdf.new()
             _set_meta(mdata, pdf_input, outpdf)
@@ -257,6 +269,14 @@ def export(files, pages, mdata, exportmode, file_out, quit_flag, _export_msg):
         _remove_unreferenced_resources(pdf_output)
         pdf_output.save(file_out)
 
+
+def export(files, pages, mdata, exportmode, file_out, quit_flag, _export_msg):
+    pdf_input = [
+        pikepdf.open(copyname, password=password) for copyname, password in files
+    ]
+    export_doc(pdf_input, pages, mdata, exportmode, file_out, quit_flag)
+
+
 def num_pages(filepath):
     """Get number of pages for filepath."""
     try:
@@ -272,26 +292,21 @@ def generate_booklet(pdfqueue, tmp_dir, pages):
     file, filename = make_tmp_file(tmp_dir)
     content_dict = pikepdf.Dictionary({})
     file_indexes = {p.nfile for p in pages}
-    source_files = {n: pikepdf.open(pdfqueue[n - 1].copyname) for n in file_indexes}
+    source_files = {n-1: pikepdf.open(pdfqueue[n - 1].copyname) for n in file_indexes}
+    _copy_n_transform(source_files, file, pages)
+    to_remove = len(file.pages)
     for i in range(len(pages)//2):
         even = i % 2 == 0
-        first = pages[-i - 1 if even else i]
-        second = pages[i if even else -i - 1]
-
+        first_id = -i - 1 if even else i
+        second_id = i if even else -i - 1
+        first = pages[first_id]
+        second = pages[second_id]
+        first_foreign = file.pages[first_id]
+        second_foreign = file.pages[second_id]
         second_page_size = second.size_in_points()
         first_page_size = first.size_in_points()
         page_size = [max(second_page_size[0], first_page_size[0]) * 2,
                      max(second_page_size[1], first_page_size[1])]
-
-        first_original = source_files[first.nfile].pages[first.npage - 1]
-        first_foreign = _apply_geom_transform(
-            file, file.copy_foreign(first_original), first
-        )
-
-        second_original = source_files[second.nfile].pages[second.npage - 1]
-        second_foreign = _apply_geom_transform(
-            file, file.copy_foreign(second_original), second
-        )
 
         content_dict[f'/Page{i*2}'] = pikepdf.Page(first_foreign).as_form_xobject()
         content_dict[f'/Page{i*2 + 1}'] = pikepdf.Page(second_foreign).as_form_xobject()
@@ -316,7 +331,69 @@ def generate_booklet(pdfqueue, tmp_dir, pages):
         if pikepdf.__version__ < '2.7.0':
             newpage = file.make_indirect(newpage)
         file.pages.append(newpage)
-
+    for __ in range(to_remove):
+        del file.pages[0]
     file.save(filename)
     return filename
 
+
+# Adapted from https://stackoverflow.com/questions/28325525/python-gtk-printoperation-print-a-pdf
+class PrintOperation(Gtk.PrintOperation):
+    MESSAGE=_("Printing…")
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.connect("begin-print", self.begin_print, None)
+        self.connect("end-print", self.end_print, None)
+        self.connect("draw-page", self.draw_page, None)
+        self.connect("preview", self.preview, None)
+        self.pdf_input = None
+        self.message = self.MESSAGE
+
+    def preview(self, operation, preview_op, print_ctx, parent, user_data):
+        self.message = _("Rendering Preview…")
+
+    def begin_print(self, operation, print_ctx, print_data):
+        self.set_n_pages(len(self.app.model))
+        self.app.set_export_state(True, self.message)
+        self.pdf_input = [None] * len(self.app.pdfqueue)
+        for row in self.app.model:
+            if row[0].unmodified():
+                continue
+            i = row[0].nfile - 1
+            if self.pdf_input[i] is not None:
+                continue
+            pdf = self.app.pdfqueue[i]
+            self.pdf_input[i] = pikepdf.open(pdf.copyname, password=pdf.password)
+
+    def end_print(self, operation, print_ctx, print_data):
+        self.app.set_export_state(False)
+        self.message = self.MESSAGE
+
+    def draw_page(self, operation, print_ctx, page_num, print_data):
+        if page_num >= len(self.app.model):
+            return
+        p = self.app.model[page_num][0]
+        if p.unmodified():
+            pdfdoc = self.app.pdfqueue[p.nfile - 1]
+            page = pdfdoc.document.get_page(p.npage - 1)
+            with pdfdoc.render_lock:
+                page.render_for_printing(print_ctx.get_cairo_context())
+        else:
+            buf = io.BytesIO()
+            export_doc([self.pdf_input[p.nfile - 1]], [p], {}, None, buf, None)
+            page = Poppler.Document.new_from_data(buf.getvalue()).get_page(0)
+            page.render_for_printing(print_ctx.get_cairo_context())
+
+    def run(self):
+        result = super().run(Gtk.PrintOperationAction.PRINT_DIALOG, self.app.window)
+        if result == Gtk.PrintOperationResult.ERROR:
+            dialog = Gtk.MessageDialog(
+                self.app.window,
+                0,
+                Gtk.MessageType.ERROR,
+                Gtk.ButtonsType.CLOSE,
+                self.get_error(),
+            )
+            dialog.run()
+            dialog.destroy()
