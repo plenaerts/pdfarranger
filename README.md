@@ -39,7 +39,7 @@ pip install "git+https://github.com/plenaerts/pdfarranger.git" "pyhanko[pkcs11,i
 ```
 
 ## Usage
-
+### Signing
 - Run the python entry-point ```<install_dir>/bin/pdfarranger``` . Double-click it or run it from your terminal.
 - Open a PDF.
 - Select and right click the page where you want your signature to appear.
@@ -48,11 +48,20 @@ pip install "git+https://github.com/plenaerts/pdfarranger.git" "pyhanko[pkcs11,i
 - Choose where your signature should appear on the page. The coordinates are Cartesian, starting from bottom left and work at 72 DPI in most PDF docs. That makes the bottom-left corner of any sheet x = 0, y = 0 and the top-right corner of an A4 sheet about x = 595, y= 841.
 - Choose a filename for the PDF with your signature. Make sure your eID card is in your reader. Signing will happen.
 - PDF Arranger saves the document and the eid-mw asks for your eID PIN.
+### Signature validation
+A very basic signature verification function is added in the main menu.
+
+PDF Arranger has a strong focus on manipulating PDF documents. Verifying signatures requires NOT to manipulate them. Therefore the signature validation functionalities don't follow the other "edit" logic in PDF Arranger:
+- The menu item for signature validation is always enabled.
+- PDF Arranger will always ask to select a PDF document to validate sigantures in.
+- PDF Arrager will display pyHanko validation output in a dialog, but will not open the verified file in PDF Arranger.
 
 ### Limitations
 Using other **pyHanko options** such as custom signature text, images, other signing mechanisms than the Belgian PKCS11 module, etc, etc, ... are currently not supported. I plan on writing up some dialog that lets you tweak some pyHanko options. My focus will be use cases for non-techie, desktop application, office, everyday, ... users. Mainly for smart cards, i.e. PKCS11.
 
 **Signing with multiple signatures** is currently not tested and does not work in a number of scenario's. The signature's field name is currently hardcoded to 'Signature1' for example. These names should be unique.
+
+**Signature validation is very basic.** It doesn't let you tweak the trust chain for the signature validation. It may be an idea to trust all certs in /etc/ssl/certs ?
 
 ## Why this fork?
 
