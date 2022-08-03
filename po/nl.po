@@ -585,6 +585,12 @@ msgstr "Verdere aanpassingen zullen de handtekening waarschijnlijk ongeldig make
 msgid "Exporting and signing document."
 msgstr "Document aan het exporteren en ondertekenen."
 
+msgid "Validate Signatures"
+msgstr "Handtekeningen valideren"
+
+msgid "Signature validation:"
+msgstr "Handtekeningen valideren:"
+
 #~ msgid "Grid splitting"
 #~ msgstr "Roostersplitsing"
 

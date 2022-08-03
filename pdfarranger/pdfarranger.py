@@ -111,6 +111,11 @@ from gi.repository import Pango
 
 from .config import Config
 
+try:
+    import pyhanko
+except ImportError:
+    pyhanko = None
+
 if os.name == 'nt':
     lang = Config(DOMAIN).language()
     if not lang and GLib.get_language_names():
@@ -127,6 +132,7 @@ from . import metadata
 from . import croputils
 from . import splitter
 from . import signer
+from . import sig_validation
 from .iconview import CellRendererImage, IconviewCursor, IconviewDragSelect, IconviewPanView
 from .core import img2pdf_supported_img, PageAdder, PDFDocError, PDFRenderer
 GObject.type_register(CellRendererImage)
@@ -382,6 +388,7 @@ class PdfArranger(Gtk.Application):
             ('about', self.about_dialog),
             ("insert-blank-page", self.insert_blank_page),
             ('sign', self.sign_pdf),
+            ('validate-signatures', self.validate_signatures),
             ("generate-booklet", self.generate_booklet),
             ("print", self.on_action_print),
         ]
@@ -396,6 +403,8 @@ class PdfArranger(Gtk.Application):
         self.window_focus_in_out_event()
         self.undomanager.set_actions(self.window.lookup_action('undo'),
                                      self.window.lookup_action('redo'))
+        if pyhanko is None:
+            self.window.lookup_action('validate-signatures').set_enabled(False)
 
     def insert_blank_page(self, _action, _option, _unknown):
         size = (21 / 2.54 * 72, 29.7 / 2.54 * 72) # A4 by default
@@ -1936,6 +1945,10 @@ class PdfArranger(Gtk.Application):
             ("generate-booklet", ne),
         ]:
             self.window.lookup_action(a).set_enabled(e)
+
+        if pyhanko is None:
+            self.window.lookup_action('sign').set_enabled(False)
+
         self.update_statusbar()
         if selection and not move_cursor_event:
             self.iv_cursor.cursor_is_visible = False
@@ -2395,6 +2408,7 @@ class PdfArranger(Gtk.Application):
             sign_coords = d.run_get()
         return sign_page_index, sign_coords
 
+
     def sign_pdf(self, _action, _parameter, _unknown):
         """Export to a PDF and sign it using pyHanko.
 
@@ -2406,30 +2420,50 @@ class PdfArranger(Gtk.Application):
         3. save the document as a new PDF file and sign it using pyHanko.
         """
 
-        # Check for pyHanko
-        try:
-            import pyhanko
-        except ImportError:
-            pyhanko = None
-            self.error_message_dialog(_('pyHanko package not found!\n') +
-                                      _('Install instructions:') +
-                                      'https://github.com/MatthiasValvekens/pyHanko/#installing' +
-                                      '\n\n' +
-                                      _('Install pyHanko in the module search path for pdfarranger.')
-                                      )
+        if pyhanko is not None:
+            ctxt_id = self.status_bar.get_context_id("signing")
+            self.status_bar.push(ctxt_id, _('Exporting and signing document.'))
 
-        ctxt_id = self.status_bar.get_context_id("signing")
-        self.status_bar.push(ctxt_id, _('Exporting and signing document.'))
+            # Get page and coords for sig
+            sign_page, sign_coords = self.__get_sign_page_and_coords()
 
-        # Get page and coords for sig
-        sign_page, sign_coords = self.__get_sign_page_and_coords()
+            # Save and sign
+            if sign_page is not None and sign_coords is not None:
+                self.choose_export_pdf_name_and_sign(sign_page,
+                                                     sign_coords,
+                                                     savemode=GLib.Variant('i', 0),
+                                                     )
 
-        # Save and sign
-        if sign_page is not None and sign_coords is not None:
-            self.choose_export_pdf_name_and_sign(sign_page,
-                                                 sign_coords,
-                                                 savemode=GLib.Variant('i', 0),
-                                                 )
+    def validate_signatures(self, action, _parameter, _unknown):
+        """Validate the signatures on a PDF document.
+
+        This is a bit tricky. PDF Arranger is made to edit, combine, etc
+        PDF documents. Validating signatures should never involve changing the
+        PDF document or it would invalidate the signature.
+
+        Therefore, we check if the open document is in a saved state. If it is
+        we run pyHanko's validate function and put the output in a dialog for
+        the user to read.
+
+        Basic, but should do the trick to give some basic signature validation
+        to end users without directly using the pyhanko CLI.
+        """
+
+        if pyhanko is not None:
+            ctxt_id = self.status_bar.get_context_id("validating-sigs")
+            self.status_bar.push(ctxt_id, _('Validating document signatures.'))
+            signed_pdf_chooser = sig_validation.SignedPDFChooser(self.window)
+            response = signed_pdf_chooser.run()
+            if response == Gtk.ResponseType.OK:
+                filename = signed_pdf_chooser.get_filename()
+                signed_pdf_chooser.destroy()
+                svd = sig_validation.SigValidationDialog(filename, self.window)
+                svd.run()
+                svd.destroy()
+            else:
+                signed_pdf_chooser.destroy()
+
+
 
     def __clear_and_reopen(self, infile):
         """Clear the IconView and add a file."""

@@ -75,6 +75,12 @@ along with PDF Arranger.  If not, see <http://www.gnu.org/licenses/>.
     </section>
     <section>
       <item>
+        <attribute name="label" translatable="yes">Validate Signatures</attribute>
+        <attribute name="action">win.validate-signatures</attribute>
+      </item>
+  </section>
+    <section>
+      <item>
         <attribute name="label" translatable="yes">_Undo</attribute>
         <attribute name="action">win.undo</attribute>
       </item>
