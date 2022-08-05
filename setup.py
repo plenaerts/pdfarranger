@@ -20,7 +20,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from DistUtilsExtra.command import (
     build_i18n, clean_i18n, build_extra, build_icons)
 
@@ -39,7 +39,8 @@ setup(
     description='A simple application for PDF Merging, Rearranging, and Splitting',
     url='https://github.com/pdfarranger/pdfarranger',
     license='GNU GPL-3',
-    packages=['pdfarranger'],
+    #    packages=['pdfarranger', 'pdfarranger.signatures'],
+    packages=find_packages(),
     data_files=data_files,
     zip_safe=False,
     cmdclass={

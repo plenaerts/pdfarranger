@@ -131,8 +131,8 @@ from . import exporter
 from . import metadata
 from . import croputils
 from . import splitter
-from . import signer
-from . import sig_validation
+from .signatures import sign
+from .signatures import validation
 from .iconview import CellRendererImage, IconviewCursor, IconviewDragSelect, IconviewPanView
 from .core import img2pdf_supported_img, PageAdder, PDFDocError, PDFRenderer
 GObject.type_register(CellRendererImage)
@@ -2391,7 +2391,7 @@ class PdfArranger(Gtk.Application):
         sign_page_index = -1
         if len(selection) > 1:
             # Multiple pages selected, ask which one to sign with a dialog.
-            d = signer.PageDialog(selection, self.window)
+            d = sign.PageDialog(selection, self.window)
             sign_page_path = d.run_get()
         else:
             # Only one page selected. Don't forget to fetch the
@@ -2404,7 +2404,7 @@ class PdfArranger(Gtk.Application):
 
         sign_coords = None
         if sign_page_index >= 0:
-            d = signer.SignaturePositionDialog(sign_page, self.window)
+            d = sign.SignaturePositionDialog(sign_page, self.window)
             sign_coords = d.run_get()
         return sign_page_index, sign_coords
 
@@ -2452,12 +2452,12 @@ class PdfArranger(Gtk.Application):
         if pyhanko is not None:
             ctxt_id = self.status_bar.get_context_id("validating-sigs")
             self.status_bar.push(ctxt_id, _('Validating document signatures.'))
-            signed_pdf_chooser = sig_validation.SignedPDFChooser(self.window)
+            signed_pdf_chooser = validation.SignedPDFChooser(self.window)
             response = signed_pdf_chooser.run()
             if response == Gtk.ResponseType.OK:
                 filename = signed_pdf_chooser.get_filename()
                 signed_pdf_chooser.destroy()
-                svd = sig_validation.SigValidationDialog(filename, self.window)
+                svd = validation.SigValidationDialog(filename, self.window)
                 svd.run()
                 svd.destroy()
             else:
@@ -2509,7 +2509,7 @@ class PdfArranger(Gtk.Application):
                 while self.export_process.is_alive():
                     time.sleep(1)
 
-                signer.sign_pdf(file_out, sign_page, sign_coords)
+                sign.sign_pdf(file_out, sign_page, sign_coords)
                 self.__clear_and_reopen(file_out)
                 self.info_message_dialog(_('Document succesfully signed.') +
                                          '\n\n' +
