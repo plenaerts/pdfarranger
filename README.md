@@ -1,3 +1,7 @@
+# Repository is archived
+
+**I stopped working on signing in pdfarranger as [KDE's Okular](https://okular.kde.org/) now supports PCKS11 signatures.**
+
 # PDFSign fork of PDF Arranger
 
 This is a fork of https://github.com/pdfarranger/pdfarranger to sign PDF documents using https://github.com/MatthiasValvekens/pyHanko/.
