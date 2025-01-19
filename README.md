@@ -1,6 +1,6 @@
 # Repository is archived
 
-**I stopped working on signing in pdfarranger as [KDE's Okular](https://okular.kde.org/) now supports PCKS11 signatures.**
+**I stopped working on signing in pdfarranger as [GNOME Papers](https://gitlab.gnome.org/GNOME/Incubator/papers/-/tags/47.0) and [KDE's Okular](https://okular.kde.org/) now support PCKS11 signatures.**
 
 # PDFSign fork of PDF Arranger
 
